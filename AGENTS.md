@@ -177,6 +177,29 @@ cd frontend && pnpm typecheck
 - If a change touches frontend and backend behavior, verify both sides.
 - If a fix depends on runtime state, re-run the natural validation path after the change.
 
+## Database, Entity, and Code Comment Standards
+
+When adding or changing database structures:
+
+- Every newly added table and column must include a clear database comment.
+- Column comments must explain the business meaning, expected value shape, and important constraints when they are not obvious.
+- For enum/status/code fields, document the allowed values and their meaning either in the column comment, migration/DDL note, or adjacent code enum.
+- For monetary, quantity, degree, date, and audit fields, make the unit, precision, and lifecycle clear in the comment.
+
+When adding or changing Java entity classes:
+
+- Every persistent entity property must have a standard field comment that explains what the property represents.
+- Entity comments should describe business meaning, not merely repeat the Java field name.
+- If a field mirrors a database column with non-obvious semantics, keep the entity comment consistent with the database column comment.
+- For relationships, snapshot fields, and derived display fields, explain why the field exists and whether it is authoritative or only for display.
+
+When implementing code:
+
+- Add concise comments for key business logic, especially transaction boundaries, inventory changes, bill mutation history, permission filters, AI/RAG source selection, and data consistency checks.
+- Avoid noisy comments that restate obvious code.
+- After writing each method, review that method once for comment coverage: key branches, side effects, and non-obvious rules should be understandable without reading unrelated files.
+- Do not leave vague comments such as "handle data" or "process logic"; name the actual business rule being protected.
+
 ## What To Avoid
 
 - Do not assume restart-first backend workflows.
