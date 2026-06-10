@@ -1,0 +1,7 @@
+interface:
+  display_name: "审查并提交代码"
+  short_description: "提交前审查注释格式、验证范围并生成清晰提交摘要"
+  default_prompt: "Use $reviewing-and-committing-code to review and commit the current code changes."
+
+policy:
+  allow_implicit_invocation: true
