@@ -23,6 +23,7 @@
 hs_err_pid*
 replay_pid*
 
+.codex
 .DS_Store
 .vite-ssg-dist
 .vite-ssg-temp
