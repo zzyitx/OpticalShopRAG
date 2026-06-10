@@ -169,6 +169,18 @@ export const generatedRoutes: GeneratedRoute[] = [
     }
   },
   {
+    name: 'store',
+    path: '/store',
+    component: 'layout.base$view.store',
+    meta: {
+      title: 'store',
+      i18nKey: 'route.store',
+      icon: 'solar:shop-2-line-duotone',
+      roles: ['ADMIN'],
+      order: 4
+    }
+  },
+  {
     name: 'usage-monitor',
     path: '/usage-monitor',
     component: 'layout.base$view.usage-monitor',

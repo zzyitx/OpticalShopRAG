@@ -172,7 +172,8 @@ const local: App.I18n.Schema = {
     user: '用户管理',
     'personal-center': '个人中心',
     recharge: '余额充值',
-    'recharge-manage': '充值管理'
+    'recharge-manage': '充值管理',
+    store: '眼镜店经营台'
   },
   page: {
     login: {

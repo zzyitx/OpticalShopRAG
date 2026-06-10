@@ -29,6 +29,7 @@ export const views: Record<LastLevelRouteKey, RouteComponent | (() => Promise<Ro
   "personal-center": () => import("@/views/personal-center/index.vue"),
   "recharge-manage": () => import("@/views/recharge-manage/index.vue"),
   recharge: () => import("@/views/recharge/index.vue"),
+  store: () => import("@/views/store/index.vue"),
   "usage-monitor": () => import("@/views/usage-monitor/index.vue"),
   user: () => import("@/views/user/index.vue"),
 };

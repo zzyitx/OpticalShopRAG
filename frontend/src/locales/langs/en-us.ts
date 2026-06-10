@@ -172,7 +172,8 @@ const local: App.I18n.Schema = {
     user: 'User Management',
     'personal-center': 'Personal Center',
     recharge: 'Recharge',
-    'recharge-manage': 'Recharge Management'
+    'recharge-manage': 'Recharge Management',
+    store: 'Store Workspace'
   },
   page: {
     login: {

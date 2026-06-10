@@ -177,6 +177,7 @@ const routeMap: RouteMap = {
   "personal-center": "/personal-center",
   "recharge": "/recharge",
   "recharge-manage": "/recharge-manage",
+  "store": "/store",
   "usage-monitor": "/usage-monitor",
   "user": "/user"
 };

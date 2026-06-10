@@ -31,6 +31,7 @@ declare module "@elegant-router/types" {
     "personal-center": "/personal-center";
     "recharge": "/recharge";
     "recharge-manage": "/recharge-manage";
+    "store": "/store";
     "usage-monitor": "/usage-monitor";
     "user": "/user";
   };
@@ -78,6 +79,7 @@ declare module "@elegant-router/types" {
     | "personal-center"
     | "recharge"
     | "recharge-manage"
+    | "store"
     | "usage-monitor"
     | "user"
   >;
@@ -110,6 +112,7 @@ declare module "@elegant-router/types" {
     | "personal-center"
     | "recharge-manage"
     | "recharge"
+    | "store"
     | "usage-monitor"
     | "user"
   >;
