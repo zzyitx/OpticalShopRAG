@@ -1,6 +1,6 @@
 # 眼镜店改造阶段一实施方案稿
 
-> 状态：方案稿，待审阅后实施
+> 状态：阶段一收尾实现完成，待真实运行态验收
 > 日期：2026-06-07
 > 关联文档：`../requirements/glasses-store-rag-prd.md`、`../plans/glasses-store-rag-implementation-plan.md`
 

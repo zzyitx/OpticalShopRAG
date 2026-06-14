@@ -12,6 +12,10 @@
   "i18n-ally.keystyle": "nested",
   "i18n-ally.localesPaths": ["src/locales/langs"],
   "prettier.enable": false,
+  "npm.packageManager": "pnpm",
+  "terminal.integrated.env.windows": {
+    "PATH": "C:\\Users\\28279\\AppData\\Local\\nodejs\\current;C:\\Users\\28279\\AppData\\Local\\pnpm\\bin;${env:PATH}"
+  },
   "typescript.tsdk": "node_modules/typescript/lib",
   "unocss.root": ["./"],
   "vue.server.hybridMode": true,

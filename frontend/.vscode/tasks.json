@@ -1,0 +1,60 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Frontend: Dev",
+      "type": "process",
+      "command": "C:\\Users\\28279\\AppData\\Local\\pnpm\\bin\\pnpm.CMD",
+      "args": ["dev"],
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "PATH": "C:\\Users\\28279\\AppData\\Local\\nodejs\\current;C:\\Users\\28279\\AppData\\Local\\pnpm\\bin;${env:PATH}"
+        }
+      },
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "vite",
+        "pattern": {
+          "regexp": "^(.*)$",
+          "message": 1
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": ".*vite.*",
+          "endsPattern": ".*ready in.*"
+        }
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    },
+    {
+      "label": "Frontend: Typecheck",
+      "type": "process",
+      "command": "C:\\Users\\28279\\AppData\\Local\\pnpm\\bin\\pnpm.CMD",
+      "args": ["typecheck"],
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "PATH": "C:\\Users\\28279\\AppData\\Local\\nodejs\\current;C:\\Users\\28279\\AppData\\Local\\pnpm\\bin;${env:PATH}"
+        }
+      },
+      "problemMatcher": "$tsc"
+    },
+    {
+      "label": "Frontend: Build",
+      "type": "process",
+      "command": "C:\\Users\\28279\\AppData\\Local\\pnpm\\bin\\pnpm.CMD",
+      "args": ["build"],
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "PATH": "C:\\Users\\28279\\AppData\\Local\\nodejs\\current;C:\\Users\\28279\\AppData\\Local\\pnpm\\bin;${env:PATH}"
+        }
+      },
+      "problemMatcher": []
+    }
+  ]
+}

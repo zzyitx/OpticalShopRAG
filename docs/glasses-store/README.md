@@ -9,6 +9,7 @@
 | 需求稿 | [requirements/glasses-store-rag-prd.md](requirements/glasses-store-rag-prd.md) | 记录产品定位、业务边界、功能范围、验收标准。 |
 | 计划稿 | [plans/glasses-store-rag-implementation-plan.md](plans/glasses-store-rag-implementation-plan.md) | 记录总体实施路线、模块拆分、接口范围、测试计划。 |
 | 实施方案稿 | [implementation/glasses-store-phase1-implementation-draft.md](implementation/glasses-store-phase1-implementation-draft.md) | 记录阶段一首批落地方案、配置脱敏、后端闭环、最小前端验证路径。 |
+| 阶段一收尾审查 | [implementation/glasses-store-phase1-readiness-audit-2026-06-12.md](implementation/glasses-store-phase1-readiness-audit-2026-06-12.md) | 记录阶段一已关闭问题、验证证据和最终运行态验收清单。 |
 
 ## 阅读顺序
 

@@ -6,7 +6,8 @@
       "request": "launch",
       "name": "Vue Debugger",
       "url": "http://localhost:9527",
-      "webRoot": "${workspaceFolder}"
+      "webRoot": "${workspaceFolder}",
+      "preLaunchTask": "Frontend: Dev"
     },
     {
       "type": "node",
