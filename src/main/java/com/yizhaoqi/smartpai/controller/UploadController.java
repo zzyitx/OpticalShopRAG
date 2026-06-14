@@ -14,6 +14,7 @@ import com.yizhaoqi.smartpai.utils.LogUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -27,6 +28,7 @@ import java.util.Set;
 
 @RestController
 @RequestMapping("/api/v1/upload")
+@PreAuthorize("@permissionAuthorization.has(authentication, 'rag.knowledge-base.upload')")
 public class UploadController {
 
     private static final long DEFAULT_CHUNK_SIZE_BYTES = 5L * 1024 * 1024L;

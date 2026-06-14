@@ -4,6 +4,7 @@ import com.yizhaoqi.smartpai.service.StoreProductService;
 import com.yizhaoqi.smartpai.service.StoreOperatorResolver;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -32,16 +33,19 @@ public class StoreProductController {
     }
 
     @GetMapping
+    @PreAuthorize("@permissionAuthorization.has(authentication, 'store.product.view')")
     public ResponseEntity<?> listProducts() {
         return ResponseEntity.ok(success(storeProductService.listProducts()));
     }
 
     @GetMapping("/{id}")
+    @PreAuthorize("@permissionAuthorization.has(authentication, 'store.product.view')")
     public ResponseEntity<?> getProduct(@PathVariable Long id) {
         return ResponseEntity.ok(success(storeProductService.getProduct(id)));
     }
 
     @PostMapping
+    @PreAuthorize("@permissionAuthorization.has(authentication, 'store.product.create')")
     public ResponseEntity<?> createProduct(
             @RequestBody StoreProductService.ProductCreateRequest request,
             Authentication authentication
@@ -50,6 +54,7 @@ public class StoreProductController {
     }
 
     @PutMapping("/{id}")
+    @PreAuthorize("@permissionAuthorization.has(authentication, 'store.product.update')")
     public ResponseEntity<?> updateProduct(
             @PathVariable Long id,
             @RequestBody StoreProductService.ProductUpdateRequest request,
@@ -59,6 +64,7 @@ public class StoreProductController {
     }
 
     @PatchMapping("/{id}/status")
+    @PreAuthorize("@permissionAuthorization.has(authentication, 'store.product.update')")
     public ResponseEntity<?> updateStatus(
             @PathVariable Long id,
             @RequestBody StoreProductService.ProductStatusRequest request,

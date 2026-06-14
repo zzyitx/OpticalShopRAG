@@ -6,6 +6,7 @@ import com.yizhaoqi.smartpai.service.ChatGenerationStateService;
 import com.yizhaoqi.smartpai.utils.JwtUtils;
 import com.yizhaoqi.smartpai.utils.LogUtils;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -20,6 +21,7 @@ import java.util.HashMap;
 
 @RestController
 @RequestMapping("/api/v1/chat")
+@PreAuthorize("@permissionAuthorization.has(authentication, 'rag.chat.use')")
 public class ChatController {
 
     private final JwtUtils jwtUtils;

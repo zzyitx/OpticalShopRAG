@@ -63,7 +63,8 @@ class StoreSalesBillCsvServiceTest {
                         null,
                         null,
                         null,
-                        null
+                        null,
+                        java.util.List.of()
                 ));
         String csv = service.generateTemplate()
                 + "Alice,13800000000,2026-06-08,-3.50,-0.75,180,-2.75,-0.50,170,62.00,FRAME-A123,LENS-B456,399.00,0.00,399.00,CASH,Lee,Wang,first bill\n"
@@ -77,5 +78,18 @@ class StoreSalesBillCsvServiceTest {
         assertEquals(2, result.successCount());
         assertEquals(0, result.failureCount());
         verify(salesBillService, times(2)).createBill(any(StoreSalesBillService.SalesBillCreateRequest.class), eq("admin"));
+    }
+
+    @Test
+    void shouldGenerateAndImportXlsxTemplate() {
+        when(salesBillService.createBill(any(StoreSalesBillService.SalesBillCreateRequest.class), eq("admin")))
+                .thenReturn(null);
+        byte[] template = service.generateXlsxTemplate();
+
+        StoreSalesBillCsvService.ImportResult result = service.importXlsx(new ByteArrayInputStream(template), "admin");
+
+        assertTrue(template.length > 0);
+        assertEquals(0, result.successCount());
+        assertEquals(0, result.failureCount());
     }
 }

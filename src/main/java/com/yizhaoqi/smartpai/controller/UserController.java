@@ -5,6 +5,7 @@ import com.yizhaoqi.smartpai.exception.RateLimitExceededException;
 import com.yizhaoqi.smartpai.model.User;
 import com.yizhaoqi.smartpai.repository.UserRepository;
 import com.yizhaoqi.smartpai.service.RateLimitService;
+import com.yizhaoqi.smartpai.service.PermissionService;
 import com.yizhaoqi.smartpai.service.UsageQuotaService;
 import com.yizhaoqi.smartpai.service.UserService;
 import com.yizhaoqi.smartpai.service.UserTokenService;
@@ -48,6 +49,9 @@ public class UserController {
 
     @Autowired
     private UserTokenService userTokenService;
+
+    @Autowired
+    private PermissionService permissionService;
 
     // 用户注册接口
     // 接收用户请求体中的用户名和密码，并调用用户服务进行注册
@@ -188,6 +192,7 @@ public class UserController {
             displayUserData.put("id", user.getId());
             displayUserData.put("username", user.getUsername());
             displayUserData.put("role", user.getRole());
+            displayUserData.put("permissions", permissionService.getEffectivePermissions(user));
             
             // 添加组织标签信息
             if (user.getOrgTags() != null && !user.getOrgTags().isEmpty()) {

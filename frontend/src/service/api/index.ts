@@ -3,3 +3,4 @@ export * from './invite-code';
 export * from './route';
 export * from './recharge';
 export * from './store';
+export * from './permission';

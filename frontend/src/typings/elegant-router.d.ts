@@ -28,6 +28,7 @@ declare module "@elegant-router/types" {
     "login": "/login/:module(pwd-login|code-login|register|reset-pwd|bind-wechat)?";
     "model-provider": "/model-provider";
     "org-tag": "/org-tag";
+    "permission-center": "/permission-center";
     "personal-center": "/personal-center";
     "recharge": "/recharge";
     "recharge-manage": "/recharge-manage";
@@ -76,6 +77,7 @@ declare module "@elegant-router/types" {
     | "login"
     | "model-provider"
     | "org-tag"
+    | "permission-center"
     | "personal-center"
     | "recharge"
     | "recharge-manage"
@@ -109,6 +111,7 @@ declare module "@elegant-router/types" {
     | "knowledge-base"
     | "model-provider"
     | "org-tag"
+    | "permission-center"
     | "personal-center"
     | "recharge-manage"
     | "recharge"

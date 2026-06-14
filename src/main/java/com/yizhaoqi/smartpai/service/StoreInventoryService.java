@@ -7,13 +7,16 @@ import com.yizhaoqi.smartpai.model.StoreInventoryLedger;
 import com.yizhaoqi.smartpai.model.StoreInventoryStock;
 import com.yizhaoqi.smartpai.model.StoreOutboundItem;
 import com.yizhaoqi.smartpai.model.StoreOutboundOrder;
+import com.yizhaoqi.smartpai.model.StoreProduct;
 import com.yizhaoqi.smartpai.repository.StoreInboundOrderRepository;
 import com.yizhaoqi.smartpai.repository.StoreInventoryLedgerRepository;
 import com.yizhaoqi.smartpai.repository.StoreInventoryStockRepository;
 import com.yizhaoqi.smartpai.repository.StoreOutboundOrderRepository;
+import com.yizhaoqi.smartpai.repository.StoreProductRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -34,15 +37,18 @@ public class StoreInventoryService {
     private final StoreInventoryLedgerRepository ledgerRepository;
     private final StoreInboundOrderRepository inboundOrderRepository;
     private final StoreOutboundOrderRepository outboundOrderRepository;
+    private final StoreProductRepository productRepository;
 
     public StoreInventoryService(StoreInventoryStockRepository stockRepository,
                                  StoreInventoryLedgerRepository ledgerRepository,
                                  StoreInboundOrderRepository inboundOrderRepository,
-                                 StoreOutboundOrderRepository outboundOrderRepository) {
+                                 StoreOutboundOrderRepository outboundOrderRepository,
+                                 StoreProductRepository productRepository) {
         this.stockRepository = stockRepository;
         this.ledgerRepository = ledgerRepository;
         this.inboundOrderRepository = inboundOrderRepository;
         this.outboundOrderRepository = outboundOrderRepository;
+        this.productRepository = productRepository;
     }
 
     @Transactional(readOnly = true)
@@ -50,6 +56,24 @@ public class StoreInventoryService {
         return stockRepository.findAll().stream()
                 .map(this::toStockView)
                 .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<InboundOrderView> listInbounds() {
+        return inboundOrderRepository.findAll().stream().map(this::toInboundOrderView).toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<OutboundOrderView> listOutbounds() {
+        return outboundOrderRepository.findAll().stream().map(this::toOutboundOrderView).toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<LedgerView> listLedgers(String productSku) {
+        List<StoreInventoryLedger> ledgers = StringUtils.hasText(productSku)
+                ? ledgerRepository.findByProductSkuOrderByOperatedAtDesc(productSku.trim())
+                : ledgerRepository.findAll();
+        return ledgers.stream().map(this::toLedgerView).toList();
     }
 
     @Transactional
@@ -69,10 +93,11 @@ public class StoreInventoryService {
         // 草稿只记录单据和明细，不触碰库存；库存变化必须等确认入库时在同一事务内完成。
         for (InboundItemRequest itemRequest : request.items()) {
             validatePositiveQuantity(itemRequest.quantity());
+            StoreProduct product = requireUsableProduct(itemRequest.productSku());
             StoreInboundItem item = new StoreInboundItem();
             item.setOrder(order);
-            item.setProductSku(itemRequest.productSku());
-            item.setProductNameSnapshot(itemRequest.productNameSnapshot());
+            item.setProductSku(product.getSku());
+            item.setProductNameSnapshot(product.getName());
             item.setQuantity(itemRequest.quantity());
             item.setUnitPrice(defaultMoney(itemRequest.unitPrice()));
             item.setTotalAmount(defaultMoney(itemRequest.unitPrice()).multiply(BigDecimal.valueOf(itemRequest.quantity())));
@@ -100,10 +125,11 @@ public class StoreInventoryService {
         // 草稿出库不预占库存；阶段一库存不足校验统一放在确认出库事务中执行。
         for (OutboundItemRequest itemRequest : request.items()) {
             validatePositiveQuantity(itemRequest.quantity());
+            StoreProduct product = requireUsableProduct(itemRequest.productSku());
             StoreOutboundItem item = new StoreOutboundItem();
             item.setOrder(order);
-            item.setProductSku(itemRequest.productSku());
-            item.setProductNameSnapshot(itemRequest.productNameSnapshot());
+            item.setProductSku(product.getSku());
+            item.setProductNameSnapshot(product.getName());
             item.setQuantity(itemRequest.quantity());
             item.setUnitPrice(defaultMoney(itemRequest.unitPrice()));
             item.setTotalAmount(defaultMoney(itemRequest.unitPrice()).multiply(BigDecimal.valueOf(itemRequest.quantity())));
@@ -158,9 +184,36 @@ public class StoreInventoryService {
         return new OutboundOrderView(order.getId(), order.getOrderNo(), order.getStatus());
     }
 
+    @Transactional
+    public InboundOrderView cancelInbound(Long orderId, String operator) {
+        StoreInboundOrder order = inboundOrderRepository.findById(orderId)
+                .orElseThrow(() -> new CustomException("STORE_INBOUND_ORDER_NOT_FOUND", HttpStatus.NOT_FOUND));
+        if (order.getStatus() != StoreInboundOrder.InboundStatus.DRAFT) {
+            throw new CustomException("STORE_INBOUND_ORDER_NOT_CANCELLABLE", HttpStatus.CONFLICT);
+        }
+        // 取消只允许作用于未改变库存的草稿，并记录操作人和时间用于审计。
+        order.setStatus(StoreInboundOrder.InboundStatus.CANCELLED);
+        order.setCancelledBy(operator);
+        order.setCancelledAt(LocalDateTime.now());
+        return toInboundOrderView(inboundOrderRepository.save(order));
+    }
+
+    @Transactional
+    public OutboundOrderView cancelOutbound(Long orderId, String operator) {
+        StoreOutboundOrder order = outboundOrderRepository.findById(orderId)
+                .orElseThrow(() -> new CustomException("STORE_OUTBOUND_ORDER_NOT_FOUND", HttpStatus.NOT_FOUND));
+        if (order.getStatus() != StoreOutboundOrder.OutboundStatus.DRAFT) {
+            throw new CustomException("STORE_OUTBOUND_ORDER_NOT_CANCELLABLE", HttpStatus.CONFLICT);
+        }
+        order.setStatus(StoreOutboundOrder.OutboundStatus.CANCELLED);
+        order.setCancelledBy(operator);
+        order.setCancelledAt(LocalDateTime.now());
+        return toOutboundOrderView(outboundOrderRepository.save(order));
+    }
+
     private void increaseStock(StoreInboundItem item, String orderNo, String operator, LocalDateTime now) {
         StoreInventoryStock stock = stockRepository
-                .findByProductSkuAndWarehouseCode(item.getProductSku(), DEFAULT_WAREHOUSE_CODE)
+                .findByProductSkuAndWarehouseCodeForUpdate(item.getProductSku(), DEFAULT_WAREHOUSE_CODE)
                 .orElseGet(() -> createEmptyStock(item.getProductSku()));
 
         // 先保存库存快照，再写对应流水，确保两类记录描述同一组变更前后数量。
@@ -178,7 +231,7 @@ public class StoreInventoryService {
 
     private void decreaseStock(StoreOutboundItem item, String orderNo, String operator, LocalDateTime now) {
         StoreInventoryStock stock = stockRepository
-                .findByProductSkuAndWarehouseCode(item.getProductSku(), DEFAULT_WAREHOUSE_CODE)
+                .findByProductSkuAndWarehouseCodeForUpdate(item.getProductSku(), DEFAULT_WAREHOUSE_CODE)
                 .orElseThrow(() -> new CustomException("STORE_INVENTORY_NOT_ENOUGH", HttpStatus.CONFLICT));
 
         int before = safeQuantity(stock.getCurrentQuantity());
@@ -239,6 +292,19 @@ public class StoreInventoryService {
         }
     }
 
+    private StoreProduct requireUsableProduct(String productSku) {
+        if (!StringUtils.hasText(productSku)) {
+            throw new CustomException("STORE_PRODUCT_SKU_REQUIRED", HttpStatus.BAD_REQUEST);
+        }
+        StoreProduct product = productRepository.findBySku(productSku.trim())
+                .orElseThrow(() -> new CustomException("STORE_PRODUCT_NOT_FOUND", HttpStatus.NOT_FOUND));
+        if (product.getStatus() == StoreProduct.ProductStatus.DISABLED
+                || product.getStatus() == StoreProduct.ProductStatus.DELISTED) {
+            throw new CustomException("STORE_PRODUCT_NOT_USABLE", HttpStatus.CONFLICT);
+        }
+        return product;
+    }
+
     private int safeQuantity(Integer quantity) {
         return quantity == null ? 0 : quantity;
     }
@@ -271,6 +337,28 @@ public class StoreInventoryService {
                 stock.getAvailableQuantity(),
                 stock.getSafeStock(),
                 stock.getStatus()
+        );
+    }
+
+    private InboundOrderView toInboundOrderView(StoreInboundOrder order) {
+        return new InboundOrderView(order.getId(), order.getOrderNo(), order.getStatus());
+    }
+
+    private OutboundOrderView toOutboundOrderView(StoreOutboundOrder order) {
+        return new OutboundOrderView(order.getId(), order.getOrderNo(), order.getStatus());
+    }
+
+    private LedgerView toLedgerView(StoreInventoryLedger ledger) {
+        return new LedgerView(
+                ledger.getId(),
+                ledger.getProductSku(),
+                ledger.getBusinessOrderNo(),
+                ledger.getQuantityBefore(),
+                ledger.getChangeQuantity(),
+                ledger.getQuantityAfter(),
+                ledger.getOperationSource(),
+                ledger.getOperator(),
+                ledger.getOperatedAt()
         );
     }
 
@@ -321,5 +409,18 @@ public class StoreInventoryService {
     }
 
     public record OutboundOrderView(Long id, String orderNo, StoreOutboundOrder.OutboundStatus status) {
+    }
+
+    public record LedgerView(
+            Long id,
+            String productSku,
+            String businessOrderNo,
+            Integer quantityBefore,
+            Integer changeQuantity,
+            Integer quantityAfter,
+            StoreInventoryLedger.OperationSource operationSource,
+            String operator,
+            LocalDateTime operatedAt
+    ) {
     }
 }

@@ -3,8 +3,12 @@ package com.yizhaoqi.smartpai.service;
 import com.yizhaoqi.smartpai.exception.CustomException;
 import com.yizhaoqi.smartpai.model.StoreSalesBill;
 import com.yizhaoqi.smartpai.model.StoreSalesBillChangeLog;
+import com.yizhaoqi.smartpai.model.StoreSalesBillItem;
+import com.yizhaoqi.smartpai.model.StoreOutboundOrder;
+import com.yizhaoqi.smartpai.model.StoreProduct;
 import com.yizhaoqi.smartpai.repository.StoreSalesBillChangeLogRepository;
 import com.yizhaoqi.smartpai.repository.StoreSalesBillRepository;
+import com.yizhaoqi.smartpai.repository.StoreProductRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,11 +30,17 @@ public class StoreSalesBillService {
 
     private final StoreSalesBillRepository salesBillRepository;
     private final StoreSalesBillChangeLogRepository changeLogRepository;
+    private final StoreInventoryService inventoryService;
+    private final StoreProductRepository productRepository;
 
     public StoreSalesBillService(StoreSalesBillRepository salesBillRepository,
-                                 StoreSalesBillChangeLogRepository changeLogRepository) {
+                                 StoreSalesBillChangeLogRepository changeLogRepository,
+                                 StoreInventoryService inventoryService,
+                                 StoreProductRepository productRepository) {
         this.salesBillRepository = salesBillRepository;
         this.changeLogRepository = changeLogRepository;
+        this.inventoryService = inventoryService;
+        this.productRepository = productRepository;
     }
 
     @Transactional
@@ -40,10 +50,32 @@ public class StoreSalesBillService {
         StoreSalesBill bill = new StoreSalesBill();
         bill.setBillNo(generateBillNo());
         applyFields(bill, request, operator);
+        applyItems(bill, request.items());
         bill.setCreatedBy(operator);
 
         // 手机号只用于历史查询，不做唯一约束；同一客户每次配镜必须新增一条账单记录。
-        return toView(salesBillRepository.save(bill));
+        StoreSalesBill saved = salesBillRepository.save(bill);
+        if (request.autoOutbound() && !saved.getItems().isEmpty()) {
+            // 自动销售出库与账单创建共享事务；库存不足时整张账单和出库单一起回滚。
+            StoreInventoryService.OutboundOrderView outbound = inventoryService.createOutbound(
+                    new StoreInventoryService.OutboundOrderCreateRequest(
+                            StoreOutboundOrder.OutboundType.SALE,
+                            saved.getBillNo(),
+                            "销售账单自动出库",
+                            saved.getItems().stream()
+                                    .map(item -> new StoreInventoryService.OutboundItemRequest(
+                                            item.getProductSku(),
+                                            item.getProductNameSnapshot(),
+                                            item.getQuantity(),
+                                            item.getUnitPrice()
+                                    ))
+                                    .toList()
+                    ),
+                    operator
+            );
+            inventoryService.confirmOutbound(outbound.id(), operator);
+        }
+        return toView(saved);
     }
 
     @Transactional(readOnly = true)
@@ -63,6 +95,21 @@ public class StoreSalesBillService {
         return salesBillRepository.findByCustomerPhoneOrderByPurchaseDateDescCreatedAtDesc(customerPhone.trim())
                 .stream()
                 .map(this::toView)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<ChangeLogView> getChanges(Long billId) {
+        return changeLogRepository.findByBillIdOrderByChangedAtDesc(billId).stream()
+                .map(log -> new ChangeLogView(
+                        log.getId(),
+                        log.getBillId(),
+                        log.getBillNo(),
+                        log.getBeforeSnapshot(),
+                        log.getAfterSnapshot(),
+                        log.getChangedBy(),
+                        log.getChangedAt()
+                ))
                 .toList();
     }
 
@@ -124,6 +171,31 @@ public class StoreSalesBillService {
         bill.setUpdatedBy(operator);
     }
 
+    private void applyItems(StoreSalesBill bill, List<SalesBillItemRequest> itemRequests) {
+        if (itemRequests == null || itemRequests.isEmpty()) {
+            return;
+        }
+        for (SalesBillItemRequest request : itemRequests) {
+            if (!StringUtils.hasText(request.productSku()) || request.quantity() == null || request.quantity() <= 0) {
+                throw new CustomException("STORE_SALES_BILL_ITEM_INVALID", HttpStatus.BAD_REQUEST);
+            }
+            StoreProduct product = productRepository.findBySku(request.productSku().trim())
+                    .orElseThrow(() -> new CustomException("STORE_PRODUCT_NOT_FOUND", HttpStatus.NOT_FOUND));
+            if (product.getStatus() == StoreProduct.ProductStatus.DISABLED
+                    || product.getStatus() == StoreProduct.ProductStatus.DELISTED) {
+                throw new CustomException("STORE_PRODUCT_NOT_USABLE", HttpStatus.CONFLICT);
+            }
+            StoreSalesBillItem item = new StoreSalesBillItem();
+            item.setBill(bill);
+            item.setProductSku(product.getSku());
+            item.setProductNameSnapshot(product.getName());
+            item.setQuantity(request.quantity());
+            item.setUnitPrice(defaultMoney(request.unitPrice()));
+            item.setTotalAmount(defaultMoney(request.unitPrice()).multiply(BigDecimal.valueOf(request.quantity())));
+            bill.getItems().add(item);
+        }
+    }
+
     private SalesBillView toView(StoreSalesBill bill) {
         return new SalesBillView(
                 bill.getId(),
@@ -150,7 +222,19 @@ public class StoreSalesBillService {
                 bill.getOptometrist(),
                 bill.getRemark(),
                 bill.getCreatedAt(),
-                bill.getUpdatedAt()
+                bill.getUpdatedAt(),
+                bill.getItems().stream().map(this::toItemView).toList()
+        );
+    }
+
+    private SalesBillItemView toItemView(StoreSalesBillItem item) {
+        return new SalesBillItemView(
+                item.getId(),
+                item.getProductSku(),
+                item.getProductNameSnapshot(),
+                item.getQuantity(),
+                item.getUnitPrice(),
+                item.getTotalAmount()
         );
     }
 
@@ -206,7 +290,9 @@ public class StoreSalesBillService {
             StoreSalesBill.PaymentMethod paymentMethod,
             String salesperson,
             String optometrist,
-            String remark
+            String remark,
+            List<SalesBillItemRequest> items,
+            boolean autoOutbound
     ) {
     }
 
@@ -251,7 +337,9 @@ public class StoreSalesBillService {
                     paymentMethod,
                     salesperson,
                     optometrist,
-                    remark
+                    remark,
+                    List.of(),
+                    false
             );
         }
     }
@@ -281,7 +369,37 @@ public class StoreSalesBillService {
             String optometrist,
             String remark,
             LocalDateTime createdAt,
-            LocalDateTime updatedAt
+            LocalDateTime updatedAt,
+            List<SalesBillItemView> items
+    ) {
+    }
+
+    public record SalesBillItemRequest(
+            String productSku,
+            String productNameSnapshot,
+            Integer quantity,
+            BigDecimal unitPrice
+    ) {
+    }
+
+    public record SalesBillItemView(
+            Long id,
+            String productSku,
+            String productNameSnapshot,
+            Integer quantity,
+            BigDecimal unitPrice,
+            BigDecimal totalAmount
+    ) {
+    }
+
+    public record ChangeLogView(
+            Long id,
+            Long billId,
+            String billNo,
+            String beforeSnapshot,
+            String afterSnapshot,
+            String changedBy,
+            LocalDateTime changedAt
     ) {
     }
 }

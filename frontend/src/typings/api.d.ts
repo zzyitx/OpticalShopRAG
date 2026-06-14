@@ -41,6 +41,7 @@ declare namespace Api {
       id: number;
       username: string;
       role: 'USER' | 'ADMIN';
+      permissions: string[];
       orgTags: string[];
       primaryOrg: string;
     }

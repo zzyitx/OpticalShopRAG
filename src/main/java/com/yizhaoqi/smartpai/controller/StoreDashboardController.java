@@ -2,6 +2,7 @@ package com.yizhaoqi.smartpai.controller;
 
 import com.yizhaoqi.smartpai.service.StoreDashboardService;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -22,6 +23,7 @@ public class StoreDashboardController {
     }
 
     @GetMapping("/summary")
+    @PreAuthorize("@permissionAuthorization.has(authentication, 'store.dashboard.view')")
     public ResponseEntity<?> getSummary() {
         return ResponseEntity.ok(success(storeDashboardService.getSummary()));
     }

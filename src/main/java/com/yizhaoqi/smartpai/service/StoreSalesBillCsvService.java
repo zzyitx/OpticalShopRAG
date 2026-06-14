@@ -2,11 +2,16 @@ package com.yizhaoqi.smartpai.service;
 
 import com.yizhaoqi.smartpai.exception.CustomException;
 import com.yizhaoqi.smartpai.model.StoreSalesBill;
+import org.apache.poi.ss.usermodel.DataFormatter;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -54,6 +59,22 @@ public class StoreSalesBillCsvService {
         return TEMPLATE_HEADER + "\n";
     }
 
+    public byte[] generateXlsxTemplate() {
+        try (XSSFWorkbook workbook = new XSSFWorkbook(); ByteArrayOutputStream output = new ByteArrayOutputStream()) {
+            Sheet sheet = workbook.createSheet("sales-bills");
+            Row header = sheet.createRow(0);
+            String[] columns = TEMPLATE_HEADER.split(",");
+            for (int index = 0; index < columns.length; index++) {
+                header.createCell(index).setCellValue(columns[index]);
+                sheet.autoSizeColumn(index);
+            }
+            workbook.write(output);
+            return output.toByteArray();
+        } catch (IOException ex) {
+            throw new CustomException("STORE_SALES_BILL_TEMPLATE_WRITE_FAILED", HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
     public ImportResult importCsv(InputStream inputStream, String operator) {
         if (inputStream == null) {
             throw new CustomException("STORE_SALES_BILL_IMPORT_FILE_REQUIRED", HttpStatus.BAD_REQUEST);
@@ -89,10 +110,55 @@ public class StoreSalesBillCsvService {
         return new ImportResult(successCount, errors.size(), List.copyOf(errors));
     }
 
+    public ImportResult importXlsx(InputStream inputStream, String operator) {
+        if (inputStream == null) {
+            throw new CustomException("STORE_SALES_BILL_IMPORT_FILE_REQUIRED", HttpStatus.BAD_REQUEST);
+        }
+        int successCount = 0;
+        List<ImportRowError> errors = new ArrayList<>();
+        DataFormatter formatter = new DataFormatter();
+        try (XSSFWorkbook workbook = new XSSFWorkbook(inputStream)) {
+            Sheet sheet = workbook.getSheetAt(0);
+            validateHeader(readXlsxColumns(sheet.getRow(0), formatter));
+            for (int rowIndex = 1; rowIndex <= sheet.getLastRowNum(); rowIndex++) {
+                Row row = sheet.getRow(rowIndex);
+                if (row == null) {
+                    continue;
+                }
+                List<String> columns = readXlsxColumns(row, formatter);
+                if (columns.stream().noneMatch(StringUtils::hasText)) {
+                    continue;
+                }
+                try {
+                    salesBillService.createBill(toCreateRequest(columns, rowIndex + 1), operator);
+                    successCount++;
+                } catch (RuntimeException ex) {
+                    errors.add(new ImportRowError(rowIndex + 1, ex.getMessage()));
+                }
+            }
+        } catch (IOException ex) {
+            throw new CustomException("STORE_SALES_BILL_IMPORT_READ_FAILED", HttpStatus.BAD_REQUEST);
+        }
+        return new ImportResult(successCount, errors.size(), List.copyOf(errors));
+    }
+
     private void validateHeader(String header) {
         if (!TEMPLATE_HEADER.equals(header)) {
             throw new CustomException("STORE_SALES_BILL_IMPORT_HEADER_INVALID", HttpStatus.BAD_REQUEST);
         }
+    }
+
+    private void validateHeader(List<String> headerColumns) {
+        validateHeader(String.join(",", headerColumns));
+    }
+
+    private List<String> readXlsxColumns(Row row, DataFormatter formatter) {
+        List<String> columns = new ArrayList<>();
+        int expectedColumns = TEMPLATE_HEADER.split(",").length;
+        for (int index = 0; index < expectedColumns; index++) {
+            columns.add(row == null ? "" : formatter.formatCellValue(row.getCell(index)).trim());
+        }
+        return columns;
     }
 
     private StoreSalesBillService.SalesBillCreateRequest toCreateRequest(List<String> columns, int rowNumber) {
@@ -119,7 +185,9 @@ public class StoreSalesBillCsvService {
                 parsePaymentMethod(columns.get(15)),
                 columns.get(16),
                 columns.get(17),
-                columns.get(18)
+                columns.get(18),
+                List.of(),
+                false
         );
     }
 

@@ -71,6 +71,15 @@ public class StoreInboundOrder {
     @Comment("确认入库时间，库存增加和流水写入以该时间为准")
     private LocalDateTime confirmedAt;
 
+    /** 取消草稿入库单的操作人，用于审计追溯。 */
+    @Column(length = 64)
+    @Comment("取消草稿入库单的操作人，用于审计追溯")
+    private String cancelledBy;
+
+    /** 取消草稿入库单的时间；已确认单据不能取消。 */
+    @Comment("取消草稿入库单的时间；已确认单据不能取消")
+    private LocalDateTime cancelledAt;
+
     /** 创建入库单的用户标识。 */
     @Column(length = 64)
     @Comment("创建入库单的用户标识")

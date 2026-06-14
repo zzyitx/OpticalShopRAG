@@ -23,6 +23,7 @@ export const useAuthStore = defineStore(SetupStoreId.Auth, () => {
     id: 0,
     username: '',
     role: 'USER',
+    permissions: [],
     orgTags: [],
     primaryOrg: ''
   };
@@ -30,6 +31,10 @@ export const useAuthStore = defineStore(SetupStoreId.Auth, () => {
   const userInfo: Api.Auth.UserInfo = reactive({ ...defaultUserInfo });
 
   const isAdmin = computed(() => userInfo.role === 'ADMIN');
+
+  function hasPermission(permissionCode: string) {
+    return isAdmin.value || userInfo.permissions.includes('*') || userInfo.permissions.includes(permissionCode);
+  }
 
   /** is super role in static route */
   const isStaticSuper = computed(() => {
@@ -198,6 +203,7 @@ export const useAuthStore = defineStore(SetupStoreId.Auth, () => {
     isStaticSuper,
     isLogin,
     isAdmin,
+    hasPermission,
     loginLoading,
     resetStore,
     login,

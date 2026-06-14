@@ -3,8 +3,11 @@ package com.yizhaoqi.smartpai.service;
 import com.yizhaoqi.smartpai.exception.CustomException;
 import com.yizhaoqi.smartpai.model.StoreSalesBill;
 import com.yizhaoqi.smartpai.model.StoreSalesBillChangeLog;
+import com.yizhaoqi.smartpai.model.StoreOutboundOrder;
+import com.yizhaoqi.smartpai.model.StoreProduct;
 import com.yizhaoqi.smartpai.repository.StoreSalesBillChangeLogRepository;
 import com.yizhaoqi.smartpai.repository.StoreSalesBillRepository;
+import com.yizhaoqi.smartpai.repository.StoreProductRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
@@ -18,6 +21,7 @@ import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -26,13 +30,17 @@ class StoreSalesBillServiceTest {
 
     private StoreSalesBillRepository salesBillRepository;
     private StoreSalesBillChangeLogRepository changeLogRepository;
+    private StoreInventoryService inventoryService;
+    private StoreProductRepository productRepository;
     private StoreSalesBillService service;
 
     @BeforeEach
     void setUp() {
         salesBillRepository = Mockito.mock(StoreSalesBillRepository.class);
         changeLogRepository = Mockito.mock(StoreSalesBillChangeLogRepository.class);
-        service = new StoreSalesBillService(salesBillRepository, changeLogRepository);
+        inventoryService = Mockito.mock(StoreInventoryService.class);
+        productRepository = Mockito.mock(StoreProductRepository.class);
+        service = new StoreSalesBillService(salesBillRepository, changeLogRepository, inventoryService, productRepository);
     }
 
     @Test
@@ -123,6 +131,41 @@ class StoreSalesBillServiceTest {
         assertEquals("STORE_SALES_BILL_PHONE_REQUIRED", exception.getMessage());
     }
 
+    @Test
+    void shouldSaveItemsAndConfirmSalesOutboundWhenRequested() {
+        StoreProduct product = new StoreProduct();
+        product.setSku("FRAME-A123");
+        product.setName("权威镜框名称");
+        product.setStatus(StoreProduct.ProductStatus.ENABLED);
+        when(productRepository.findBySku("FRAME-A123")).thenReturn(Optional.of(product));
+        when(salesBillRepository.save(any(StoreSalesBill.class))).thenAnswer(invocation -> {
+            StoreSalesBill bill = invocation.getArgument(0);
+            bill.setId(10L);
+            return bill;
+        });
+        when(inventoryService.createOutbound(any(), eq("admin")))
+                .thenReturn(new StoreInventoryService.OutboundOrderView(20L, "OUT-020", StoreOutboundOrder.OutboundStatus.DRAFT));
+
+        StoreSalesBillService.SalesBillCreateRequest request = createRequest("张三", "13800000000", LocalDate.now());
+        request = new StoreSalesBillService.SalesBillCreateRequest(
+                request.customerName(), request.customerPhone(), request.purchaseDate(),
+                request.leftMyopiaDegree(), request.leftAstigmatism(), request.leftAxis(),
+                request.rightMyopiaDegree(), request.rightAstigmatism(), request.rightAxis(),
+                request.pupillaryDistance(), request.frameModel(), request.lensModel(),
+                request.paymentAmount(), request.discountAmount(), request.actualAmount(),
+                request.paymentMethod(), request.salesperson(), request.optometrist(), request.remark(),
+                List.of(new StoreSalesBillService.SalesBillItemRequest("FRAME-A123", "镜框", 1, new BigDecimal("399.00"))),
+                true
+        );
+
+        StoreSalesBillService.SalesBillView view = service.createBill(request, "admin");
+
+        assertEquals(1, view.items().size());
+        assertEquals("权威镜框名称", view.items().get(0).productNameSnapshot());
+        verify(inventoryService).createOutbound(any(StoreInventoryService.OutboundOrderCreateRequest.class), eq("admin"));
+        verify(inventoryService).confirmOutbound(20L, "admin");
+    }
+
     private StoreSalesBillService.SalesBillCreateRequest createRequest(String customerName, String phone, LocalDate purchaseDate) {
         return new StoreSalesBillService.SalesBillCreateRequest(
                 customerName,
@@ -143,7 +186,9 @@ class StoreSalesBillServiceTest {
                 StoreSalesBill.PaymentMethod.CASH,
                 "李店员",
                 "王验光师",
-                ""
+                "",
+                List.of(),
+                false
         );
     }
 }

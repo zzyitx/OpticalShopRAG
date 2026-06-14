@@ -135,6 +135,18 @@ export const generatedRoutes: GeneratedRoute[] = [
     }
   },
   {
+    name: 'permission-center',
+    path: '/permission-center',
+    component: 'layout.base$view.permission-center',
+    meta: {
+      title: 'permission-center',
+      i18nKey: 'route.permission-center',
+      icon: 'solar:shield-keyhole-line-duotone',
+      roles: ['ADMIN'],
+      order: 10
+    }
+  },
+  {
     name: 'personal-center',
     path: '/personal-center',
     component: 'layout.base$view.personal-center',
@@ -176,7 +188,6 @@ export const generatedRoutes: GeneratedRoute[] = [
       title: 'store',
       i18nKey: 'route.store',
       icon: 'solar:shop-2-line-duotone',
-      roles: ['ADMIN'],
       order: 4
     }
   },
