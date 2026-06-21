@@ -140,6 +140,14 @@ public class LlmProviderRouter {
                 .append("- 工具失败时根据错误信息决定下一步（重试 / 换 query / 继续推理），不要直接中断。\n")
                 .append("- 如需记录反馈或查看知识库统计，通过 tool_calls 调用对应工具。\n")
                 .append("拿到 tool 结果后继续推理并给出最终回答。\n\n");
+        sysBuilder.append("眼镜店结构化业务数据规则：\n")
+                .append("- 商品档案、SKU、品牌、型号和零售价优先调用 query_product。\n")
+                .append("- 实时库存、低库存、缺货和库存数量优先调用 query_inventory。\n")
+                .append("- 入库、出库、库存变动和业务单号核对优先调用 query_stock_flow。\n")
+                .append("- 销售账单、客户历史配镜、左右眼度数和经营金额优先调用 query_sales_bill；客户历史以手机号精确查询为主。\n")
+                .append("- 今日或指定日期范围内的账单数、实收金额、低库存和缺货统计优先调用 query_store_stats。\n")
+                .append("- 产品说明、适用人群、售后政策等知识性内容优先调用 search_knowledge；混合问题可以同时使用门店查询工具和知识库检索。\n")
+                .append("- 结构化门店工具返回的是 MySQL 业务数据来源，不要把它伪装成文档引用；无数据时明确说明未查询到，不要编造库存、金额或客户历史。\n\n");
         if (feedbackGuidance != null && !feedbackGuidance.isBlank()) {
             sysBuilder.append(feedbackGuidance.trim()).append("\n\n");
         }
