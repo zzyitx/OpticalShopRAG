@@ -8,6 +8,7 @@ import com.yizhaoqi.smartpai.repository.ChunkInfoRepository;
 import com.yizhaoqi.smartpai.repository.FileUploadRepository;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
+import io.minio.StatObjectArgs;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
@@ -24,6 +25,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -105,18 +108,21 @@ class UploadServiceTest {
     }
 
     @Test
-    void uploadChunkSkipsDatabaseWhenRedisBitmapHit() throws Exception {
+    void uploadChunkSkipsWriteWhenRedisDatabaseAndMinioAllHaveChunk() throws Exception {
         FileUpload fileUpload = uploadingFile();
         when(fileUploadRepository.findFirstByFileMd5AndUserIdOrderByCreatedAtDesc("md5", "1"))
                 .thenReturn(Optional.of(fileUpload));
         when(valueOperations.getBit("upload:1:md5", 0)).thenReturn(true);
+        when(chunkInfoRepository.existsByFileMd5AndChunkIndex("md5", 0)).thenReturn(true);
 
         MockMultipartFile file = new MockMultipartFile("file", "test.pdf", "application/pdf", "demo".getBytes());
 
         uploadService.uploadChunk("md5", 0, 1024L, "test.pdf", file, "TEAM_A", false, "1");
 
-        verifyNoInteractions(chunkInfoRepository);
-        verifyNoInteractions(minioClient);
+        verify(chunkInfoRepository).existsByFileMd5AndChunkIndex("md5", 0);
+        verify(minioClient).statObject(any(StatObjectArgs.class));
+        verify(chunkInfoRepository, never()).save(any(ChunkInfo.class));
+        verify(minioClient, never()).putObject(any(PutObjectArgs.class));
     }
 
     @Test
@@ -132,7 +138,9 @@ class UploadServiceTest {
         uploadService.uploadChunk("md5", 0, 1024L, "test.pdf", file, "TEAM_A", false, "1");
 
         verify(valueOperations).setBit("upload:1:md5", 0, true);
-        verifyNoInteractions(minioClient);
+        verify(minioClient, times(2)).statObject(any(StatObjectArgs.class));
+        verify(minioClient, never()).putObject(any(PutObjectArgs.class));
+        verify(chunkInfoRepository, never()).save(any(ChunkInfo.class));
     }
 
     @Test

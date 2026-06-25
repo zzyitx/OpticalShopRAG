@@ -67,21 +67,32 @@ async function handleFeedback(message: Api.Chat.Message, rating: 'good' | 'bad')
   window.$message?.success(rating === 'good' ? '已记录点赞反馈' : '已记录点踩反馈');
 }
 
-// 存储文件名和对应的事件处理
+// 存储文件名和对应的事件处理信息
 const sourceFiles = ref<Array<{fileName: string, id: string, referenceNumber: number, fileMd5?: string, pageNumber?: number}>>([]);
 const bareUrlPattern = /https?:\/\/[A-Za-z0-9\-._~:/?#\[\]@!$&'()*+,;=%]+/g;
 const toolNameLabels: Record<string, string> = {
   search_knowledge: '检索知识库',
   generate_summary: '生成知识摘要',
   submit_feedback: '记录反馈',
-  knowledge_stats: '读取知识库统计'
+  knowledge_stats: '读取知识库统计',
+  query_product: '查询商品档案',
+  query_inventory: '查询实时库存',
+  query_stock_flow: '查询库存流水',
+  query_sales_bill: '查询销售账单',
+  query_store_stats: '查询经营统计'
+};
+const toolSourceLabels: Record<string, string> = {
+  query_product: '来源：商品档案',
+  query_inventory: '来源：实时库存',
+  query_stock_flow: '来源：库存流水',
+  query_sales_bill: '来源：销售账单',
+  query_store_stats: '来源：门店经营统计'
 };
 const toolStatusLabels: Record<Api.Chat.AgentToolEvent['status'], string> = {
   executing: '执行中',
   success: '已完成',
   failed: '失败'
 };
-
 const toolEvents = computed(() => props.msg.toolEvents || []);
 
 function getToolLabel(tool: string) {
@@ -90,6 +101,10 @@ function getToolLabel(tool: string) {
 
 function getToolStatusLabel(status: Api.Chat.AgentToolEvent['status']) {
   return toolStatusLabels[status] || status;
+}
+
+function getToolSourceLabel(tool: string) {
+  return toolSourceLabels[tool] || '';
 }
 
 function splitTrailingUrlPunctuation(rawUrl: string) {
@@ -161,24 +176,21 @@ function createSourceLink(
   return `来源#${sourceNum}: <span class="${linkClass}" data-file-id="${fileId}">${extras?.displayName || trimmedFileName}</span>`;
 }
 
-// 处理来源文件链接的函数
+// 处理来源文件链接
 function processSourceLinks(text: string): string {
-  // 重置来源文件列表，避免重复
   sourceFiles.value = [];
 
-  // 支持单个来源，也支持一个括号里包含多个来源：
-  // (来源#1: test.pdf | 第5页; 来源#2: other.pdf | 第8页)
-  const entryBoundary = '(?=\\s*(?:[;；,，、。！？!?\\)）]|$))';
+  const entryBoundary = '(?=\\s*(?:[;，、。！？?\\)）]|$))';
   const pagePattern = new RegExp(
-    `来源#(\\d+):\\s*([^|;；,，、。！？!?\\n\\r]+?)\\s*\\|\\s*第(\\d+)页${entryBoundary}`,
+    `来源#(\\d+):\\s*([^|;，、。！？?\\n\\r]+?)\\s*\\|\\s*第(\\d+)页${entryBoundary}`,
     'g'
   );
   const md5Pattern = new RegExp(
-    `来源#(\\d+):\\s*([^|;；,，、。！？!?\\n\\r]+?)\\s*\\|\\s*MD5:\\s*([a-fA-F0-9]+)${entryBoundary}`,
+    `来源#(\\d+):\\s*([^|;，、。！？?\\n\\r]+?)\\s*\\|\\s*MD5:\\s*([a-fA-F0-9]+)${entryBoundary}`,
     'g'
   );
   const simplePattern = new RegExp(
-    `来源#(\\d+):\\s*([^<>\\n\\r|;；,，、。！？!?]+?)${entryBoundary}`,
+    `来源#(\\d+):\\s*([^<>\\n\\r|;，、。！？?]+?)${entryBoundary}`,
     'g'
   );
 
@@ -260,7 +272,6 @@ function openReferencePreviewPage(payload: {
 function handleContentClick(event: MouseEvent) {
   const target = event.target as HTMLElement;
 
-  // 检查点击的是否是文件链接
   if (target.classList.contains('source-file-link')) {
     const fileId = target.getAttribute('data-file-id');
     if (fileId) {
@@ -385,6 +396,7 @@ async function handleSourceFileClick(fileInfo: {
         <icon-material-symbols:check-circle-rounded v-else-if="event.status === 'success'" class="text-4" />
         <icon-material-symbols:error-rounded v-else class="text-4" />
         <span class="tool-event__name">{{ getToolLabel(event.tool) }}</span>
+        <span v-if="getToolSourceLabel(event.tool)" class="tool-event__source">{{ getToolSourceLabel(event.tool) }}</span>
         <span class="tool-event__status">{{ getToolStatusLabel(event.status) }}</span>
       </div>
     </div>
@@ -470,6 +482,13 @@ async function handleSourceFileClick(fileInfo: {
 .tool-event__name {
   font-weight: 500;
   color: rgb(var(--text-color));
+}
+
+.tool-event__source {
+  border-radius: 4px;
+  background: rgb(24 160 88 / 0.08);
+  padding: 1px 5px;
+  color: #18a058;
 }
 
 .tool-event__status {

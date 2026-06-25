@@ -207,15 +207,18 @@ class ParseServiceUnitTest {
         Method method = ParseService.class.getDeclaredMethod("buildLiteParseCommand", Path.class, Path.class);
         method.setAccessible(true);
 
+        Path inputPath = Path.of("/tmp/input.pdf");
+        Path outputPath = Path.of("/tmp/output.json");
+
         @SuppressWarnings("unchecked")
-        List<String> command = (List<String>) method.invoke(parseService, Path.of("/tmp/input.pdf"), Path.of("/tmp/output.json"));
+        List<String> command = (List<String>) method.invoke(parseService, inputPath, outputPath);
 
         assertEquals("lit", command.get(0));
         assertTrue(command.contains("parse"));
         assertTrue(command.contains("--format"));
         assertTrue(command.contains("json"));
         assertTrue(command.contains("--output"));
-        assertTrue(command.contains("/tmp/output.json"));
+        assertTrue(command.contains(outputPath.toString()));
         assertTrue(command.contains("--ocr-language"));
         assertTrue(command.contains("chi_sim+eng"));
         assertFalse(command.contains("--ocr-server-url"));

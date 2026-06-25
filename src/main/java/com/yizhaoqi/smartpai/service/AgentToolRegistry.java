@@ -8,10 +8,14 @@ import co.elastic.clients.elasticsearch.indices.stats.IndicesStats;
 import com.yizhaoqi.smartpai.client.DeepSeekClient;
 import com.yizhaoqi.smartpai.entity.SearchResult;
 import com.yizhaoqi.smartpai.model.FileUpload;
+import com.yizhaoqi.smartpai.model.StoreInventoryLedger;
+import com.yizhaoqi.smartpai.model.StoreInventoryStock;
+import com.yizhaoqi.smartpai.model.StoreProduct;
 import com.yizhaoqi.smartpai.repository.FileUploadRepository;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -33,6 +37,7 @@ public class AgentToolRegistry {
     private final StringRedisTemplate stringRedisTemplate;
     private final ElasticsearchClient elasticsearchClient;
     private final FileUploadRepository fileUploadRepository;
+    private final StoreQueryService storeQueryService;
     private final List<AgentTool> tools;
     private final Map<String, ToolHandler> handlers;
 
@@ -40,23 +45,35 @@ public class AgentToolRegistry {
                              DeepSeekClient deepSeekClient,
                              StringRedisTemplate stringRedisTemplate,
                              ElasticsearchClient elasticsearchClient,
-                             FileUploadRepository fileUploadRepository) {
+                             FileUploadRepository fileUploadRepository,
+                             StoreQueryService storeQueryService) {
         this.hybridSearchService = hybridSearchService;
         this.deepSeekClient = deepSeekClient;
         this.stringRedisTemplate = stringRedisTemplate;
         this.elasticsearchClient = elasticsearchClient;
         this.fileUploadRepository = fileUploadRepository;
+        this.storeQueryService = storeQueryService;
         this.tools = List.of(
                 searchKnowledgeTool(),
                 generateSummaryTool(),
                 submitFeedbackTool(),
-                knowledgeStatsTool()
+                knowledgeStatsTool(),
+                queryProductTool(),
+                queryInventoryTool(),
+                queryStockFlowTool(),
+                querySalesBillTool(),
+                queryStoreStatsTool()
         );
         this.handlers = Map.of(
                 "search_knowledge", this::executeSearchKnowledge,
                 "generate_summary", this::executeGenerateSummary,
                 "submit_feedback", this::executeSubmitFeedback,
-                "knowledge_stats", this::executeKnowledgeStats
+                "knowledge_stats", this::executeKnowledgeStats,
+                "query_product", this::executeQueryProduct,
+                "query_inventory", this::executeQueryInventory,
+                "query_stock_flow", this::executeQueryStockFlow,
+                "query_sales_bill", this::executeQuerySalesBill,
+                "query_store_stats", this::executeQueryStoreStats
         );
     }
 
@@ -176,6 +193,86 @@ public class AgentToolRegistry {
         }
     }
 
+    private ToolExecutionResult executeQueryProduct(Map<String, Object> arguments,
+                                                    String userId,
+                                                    Consumer<String> onChunk) {
+        requireUserId(userId);
+        StoreQueryService.QueryResult<StoreQueryService.ProductView> result = storeQueryService.queryProducts(
+                new StoreQueryService.ProductQuery(
+                        getOptionalString(arguments, "sku"),
+                        firstText(arguments, "keyword", "name"),
+                        getOptionalString(arguments, "brand"),
+                        getOptionalString(arguments, "model"),
+                        getEnum(arguments, "category", StoreProduct.ProductCategory.class),
+                        getOptionalInt(arguments, "limit")
+                )
+        );
+        return toToolResult("query_product", result);
+    }
+
+    private ToolExecutionResult executeQueryInventory(Map<String, Object> arguments,
+                                                      String userId,
+                                                      Consumer<String> onChunk) {
+        requireUserId(userId);
+        StoreQueryService.QueryResult<StoreQueryService.InventoryView> result = storeQueryService.queryInventory(
+                new StoreQueryService.InventoryQuery(
+                        getOptionalString(arguments, "sku"),
+                        getEnum(arguments, "status", StoreInventoryStock.StockStatus.class),
+                        getBoolean(arguments, "warningOnly", false),
+                        getOptionalInt(arguments, "limit")
+                )
+        );
+        return toToolResult("query_inventory", result);
+    }
+
+    private ToolExecutionResult executeQueryStockFlow(Map<String, Object> arguments,
+                                                      String userId,
+                                                      Consumer<String> onChunk) {
+        requireUserId(userId);
+        StoreQueryService.QueryResult<StoreQueryService.StockFlowView> result = storeQueryService.queryStockFlows(
+                new StoreQueryService.StockFlowQuery(
+                        getOptionalString(arguments, "sku"),
+                        getOptionalString(arguments, "businessOrderNo"),
+                        getEnum(arguments, "changeType", StoreInventoryLedger.ChangeType.class),
+                        getDate(arguments, "startDate"),
+                        getDate(arguments, "endDate"),
+                        getOptionalInt(arguments, "limit")
+                )
+        );
+        return toToolResult("query_stock_flow", result);
+    }
+
+    private ToolExecutionResult executeQuerySalesBill(Map<String, Object> arguments,
+                                                      String userId,
+                                                      Consumer<String> onChunk) {
+        requireUserId(userId);
+        StoreQueryService.QueryResult<StoreQueryService.SalesBillView> result = storeQueryService.querySalesBills(
+                new StoreQueryService.SalesBillQuery(
+                        getOptionalString(arguments, "customerPhone"),
+                        getOptionalString(arguments, "customerName"),
+                        getOptionalString(arguments, "billNo"),
+                        getDate(arguments, "startDate"),
+                        getDate(arguments, "endDate"),
+                        getOptionalInt(arguments, "limit")
+                )
+        );
+        return toToolResult("query_sales_bill", result);
+    }
+
+    private ToolExecutionResult executeQueryStoreStats(Map<String, Object> arguments,
+                                                       String userId,
+                                                       Consumer<String> onChunk) {
+        requireUserId(userId);
+        StoreQueryService.QueryResult<StoreQueryService.StoreStatsView> result = storeQueryService.queryStoreStats(
+                new StoreQueryService.StoreStatsQuery(
+                        getDate(arguments, "startDate"),
+                        getDate(arguments, "endDate"),
+                        getOptionalString(arguments, "dimension")
+                )
+        );
+        return toToolResult("query_store_stats", result);
+    }
+
     private AgentTool searchKnowledgeTool() {
         return new AgentTool(
                 "search_knowledge",
@@ -219,6 +316,77 @@ public class AgentToolRegistry {
         );
     }
 
+    private AgentTool queryProductTool() {
+        return new AgentTool(
+                "query_product",
+                "查询眼镜店商品档案、SKU、名称、品牌、型号、分类、规格和零售价。商品实时事实优先使用该工具，不要用知识库文档冒充当前商品档案。",
+                objectSchema(Map.of(
+                        "sku", stringSchema("商品 SKU，适合精确查询。"),
+                        "keyword", stringSchema("商品名称、SKU、品牌或型号关键词。"),
+                        "name", stringSchema("商品名称关键词，等同 keyword 的辅助入参。"),
+                        "brand", stringSchema("品牌关键词。"),
+                        "model", stringSchema("型号关键词。"),
+                        "category", enumStringSchema("商品分类。", StoreProduct.ProductCategory.class),
+                        "limit", integerSchema("返回数量，默认 10，最大 50。")
+                ), Collections.emptyList())
+        );
+    }
+
+    private AgentTool queryInventoryTool() {
+        return new AgentTool(
+                "query_inventory",
+                "查询眼镜店实时库存、低库存和缺货商品。库存数量、可用数量、安全库存和库存状态必须优先使用该工具。",
+                objectSchema(Map.of(
+                        "sku", stringSchema("商品 SKU，适合精确查询某个商品库存。"),
+                        "status", enumStringSchema("库存状态。", StoreInventoryStock.StockStatus.class),
+                        "warningOnly", booleanSchema("是否只查看低库存和缺货商品。"),
+                        "limit", integerSchema("返回数量，默认 10，最大 50。")
+                ), Collections.emptyList())
+        );
+    }
+
+    private AgentTool queryStockFlowTool() {
+        return new AgentTool(
+                "query_stock_flow",
+                "查询眼镜店入库、出库和库存变动流水。需要核对某个 SKU、业务单号或时间范围内的库存变化时使用。",
+                objectSchema(Map.of(
+                        "sku", stringSchema("商品 SKU。"),
+                        "businessOrderNo", stringSchema("入库单、出库单或账单等业务单号。"),
+                        "changeType", enumStringSchema("库存变化类型。", StoreInventoryLedger.ChangeType.class),
+                        "startDate", stringSchema("开始日期，格式 yyyy-MM-dd。"),
+                        "endDate", stringSchema("结束日期，格式 yyyy-MM-dd。"),
+                        "limit", integerSchema("返回数量，默认 10，最大 50。")
+                ), Collections.emptyList())
+        );
+    }
+
+    private AgentTool querySalesBillTool() {
+        return new AgentTool(
+                "query_sales_bill",
+                "查询眼镜店销售账单、客户历史配镜、左右眼度数、金额和账单商品。客户历史优先提供手机号精确查询；姓名只能作为受限辅助筛选。",
+                objectSchema(Map.of(
+                        "customerPhone", stringSchema("客户手机号，客户历史配镜查询优先使用该字段精确匹配。"),
+                        "customerName", stringSchema("客户姓名，仅作为辅助筛选；不能单独用于泛查客户历史。"),
+                        "billNo", stringSchema("销售账单号。"),
+                        "startDate", stringSchema("开始日期，格式 yyyy-MM-dd。"),
+                        "endDate", stringSchema("结束日期，格式 yyyy-MM-dd。"),
+                        "limit", integerSchema("返回数量，默认 10，最大 50。")
+                ), Collections.emptyList())
+        );
+    }
+
+    private AgentTool queryStoreStatsTool() {
+        return new AgentTool(
+                "query_store_stats",
+                "查询眼镜店经营统计，包括指定日期范围内的账单数、实收金额、低库存商品数和缺货商品数。",
+                objectSchema(Map.of(
+                        "startDate", stringSchema("开始日期，格式 yyyy-MM-dd。默认最近 30 天。"),
+                        "endDate", stringSchema("结束日期，格式 yyyy-MM-dd。默认今天。"),
+                        "dimension", stringSchema("统计维度，当前支持 summary。")
+                ), Collections.emptyList())
+        );
+    }
+
     private Map<String, Object> objectSchema(Map<String, Object> properties, List<String> required) {
         Map<String, Object> schema = new LinkedHashMap<>();
         schema.put("type", "object");
@@ -239,6 +407,19 @@ public class AgentToolRegistry {
         Map<String, Object> schema = new LinkedHashMap<>();
         schema.put("type", "integer");
         schema.put("description", description);
+        return schema;
+    }
+
+    private Map<String, Object> booleanSchema(String description) {
+        Map<String, Object> schema = new LinkedHashMap<>();
+        schema.put("type", "boolean");
+        schema.put("description", description);
+        return schema;
+    }
+
+    private <E extends Enum<E>> Map<String, Object> enumStringSchema(String description, Class<E> enumType) {
+        Map<String, Object> schema = stringSchema(description);
+        schema.put("enum", java.util.Arrays.stream(enumType.getEnumConstants()).map(Enum::name).toList());
         return schema;
     }
 
@@ -299,7 +480,13 @@ public class AgentToolRegistry {
         if (value == null) {
             return null;
         }
-        return String.valueOf(value).trim();
+        String text = String.valueOf(value).trim();
+        return text.isBlank() ? null : text;
+    }
+
+    private String firstText(Map<String, Object> arguments, String firstName, String secondName) {
+        String first = getOptionalString(arguments, firstName);
+        return first != null ? first : getOptionalString(arguments, secondName);
     }
 
     private int getInt(Map<String, Object> arguments, String name, int defaultValue, int min, int max) {
@@ -315,6 +502,60 @@ public class AgentToolRegistry {
             value = Integer.parseInt(String.valueOf(raw));
         }
         return Math.max(min, Math.min(max, value));
+    }
+
+    private Integer getOptionalInt(Map<String, Object> arguments, String name) {
+        Object raw = arguments.get(name);
+        if (raw == null || String.valueOf(raw).isBlank()) {
+            return null;
+        }
+        if (raw instanceof Number number) {
+            return number.intValue();
+        }
+        return Integer.parseInt(String.valueOf(raw));
+    }
+
+    private boolean getBoolean(Map<String, Object> arguments, String name, boolean defaultValue) {
+        Object raw = arguments.get(name);
+        if (raw == null || String.valueOf(raw).isBlank()) {
+            return defaultValue;
+        }
+        if (raw instanceof Boolean bool) {
+            return bool;
+        }
+        return Boolean.parseBoolean(String.valueOf(raw));
+    }
+
+    private LocalDate getDate(Map<String, Object> arguments, String name) {
+        String value = getOptionalString(arguments, name);
+        if (value == null) {
+            return null;
+        }
+        try {
+            return LocalDate.parse(value);
+        } catch (Exception exception) {
+            throw new IllegalArgumentException(name + " 必须使用 yyyy-MM-dd 格式");
+        }
+    }
+
+    private <E extends Enum<E>> E getEnum(Map<String, Object> arguments, String name, Class<E> enumType) {
+        String value = getOptionalString(arguments, name);
+        if (value == null) {
+            return null;
+        }
+        try {
+            return Enum.valueOf(enumType, value.toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalArgumentException(name + " 不是有效枚举值: " + value);
+        }
+    }
+
+    private ToolExecutionResult toToolResult(String toolName, StoreQueryService.QueryResult<?> result) {
+        Map<String, Object> data = new LinkedHashMap<>();
+        data.put("source", result.source());
+        data.put("sourceLabel", result.sourceLabel());
+        data.put("records", result.data());
+        return new ToolExecutionResult(toolName, true, result.content(), data);
     }
 
     private String limitText(String text, int maxChars) {
