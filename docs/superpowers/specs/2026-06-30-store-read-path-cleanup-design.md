@@ -1,50 +1,50 @@
-# Store Read Path Cleanup Design
+# Store 读路径治理设计
 
-## Context
+## 背景
 
-PaiSmart has merged the phase-two structured store query work into `main`. The Store business chain now includes product master data, inventory, inbound and outbound orders, inventory ledger, sales bills, dashboard stats, and AI-facing read-only tools.
+PaiSmart 已经在 `main` 合入阶段二结构化门店查询能力。当前 Store 业务链包括商品档案、库存、入库单、出库单、库存流水、销售账单、经营统计，以及面向 AI 工具的只读查询服务。
 
-The next cleanup should improve the Store read path before adding phase-three intelligent operation features. Current code already has clear write-side transaction boundaries for inventory and sales bills, so this design intentionally avoids changing stock mutation, bill creation, or payment-related behavior.
+下一步整理应先加固 Store 读路径，再进入第三阶段智能经营能力。现有库存和销售账单写路径已经有较清晰的事务边界，因此本设计明确避开库存变更、账单创建和支付相关逻辑。
 
-## Goals
+## 目标
 
-- Remove risky unbounded Store read paths, especially list methods that still load all rows.
-- Keep AI store tools bounded, source-aware, and easy to validate from tests.
-- Preserve the sales-bill privacy boundary: sales history queries must require `customerPhone` or `billNo`.
-- Improve method clarity without broad refactors or new infrastructure.
-- Leave the frontend visual structure unchanged unless a backend response shape requires a small type update.
+- 清除 Store 读路径中的高风险全量读取，尤其是仍会加载整表的列表方法。
+- 保持 AI 门店工具查询有上限、有来源、可测试。
+- 保留销售账单隐私边界：客户历史查询必须提供 `customerPhone` 或 `billNo`。
+- 精简方法职责，不做大范围重构，也不引入新的查询基础设施。
+- 前端视觉结构保持不变；只有后端响应结构确实变化时，才做最小类型和加载逻辑调整。
 
-## Non-Goals
+## 非目标
 
-- No database schema migration.
-- No rewrite of Store write workflows such as inbound confirmation, outbound confirmation, inventory ledger writes, or sales-bill creation.
-- No redesign of `frontend/src/views/store/index.vue`.
-- No new phase-three analytics features such as daily reports, replenishment suggestions, or customer repurchase reminders.
-- No runtime restart workflow change; backend validation should still prefer compile-driven hot reload when applicable.
+- 不做数据库结构迁移。
+- 不重写入库确认、出库确认、库存流水写入、销售账单创建等 Store 写流程。
+- 不重做 `frontend/src/views/store/index.vue` 的页面设计。
+- 不新增日报、补货建议、客户复购提醒等第三阶段智能经营功能。
+- 不改变本地运行流程；后端验证仍优先使用编译触发热加载。
 
-## Recommended Approach
+## 推荐方案
 
-Use a focused read-path cleanup:
+采用聚焦的读路径治理：
 
-1. Add small query request objects or method parameters for Store inventory lists, inbound orders, outbound orders, and ledgers.
-2. Replace service-level unbounded `findAll()` calls with repository queries that accept `Pageable` and basic filters.
-3. Keep existing write methods untouched, except for extracting tiny private helpers only when they directly support the read cleanup.
-4. Normalize AI-facing query results so every Store tool response exposes source metadata, record count, limit information, structured records, and a concise text summary.
+1. 为库存列表、入库单列表、出库单列表和流水列表补充小型查询参数对象，或在现有方法上增加明确参数。
+2. 将服务层仍存在的无边界 `findAll()` 替换为支持 `Pageable` 和基础过滤条件的仓储查询。
+3. 保持写方法不变；只有读路径治理直接需要时，才提取很小的私有辅助方法。
+4. 统一 AI 查询结果表达，让每个 Store 工具返回来源信息、记录数、查询上限、结构化 records 和简洁摘要文本。
 
-This gives phase three a safer data foundation while keeping the blast radius narrow.
+这样可以先给第三阶段提供稳定的数据基础，同时把改动范围控制在低风险读路径。
 
-## Backend Design
+## 后端设计
 
-### Store Inventory Lists
+### Store 库存与单据列表
 
-`StoreInventoryService` should stop returning unbounded lists for these read methods:
+`StoreInventoryService` 中以下读方法不应继续默认返回无边界列表：
 
 - `listStocks`
 - `listInbounds`
 - `listOutbounds`
 - `listLedgers`
 
-Each read method should accept a small query object or explicit parameters that cover the current UI needs:
+每个读方法应支持当前经营台和后续 AI 查询需要的基础条件：
 
 - `page`
 - `size`
@@ -54,98 +54,98 @@ Each read method should accept a small query object or explicit parameters that 
 - `startDate`
 - `endDate`
 
-The service should clamp `size` to a conservative maximum. A default page size of 20 and a maximum of 100 are enough for the management UI and keep accidental large reads under control.
+服务层需要对 `size` 做上限保护。默认页大小建议为 20，最大页大小建议为 100。这个范围足够经营台使用，也能避免误把大量历史数据一次性推给前端或 AI 工具。
 
-Repository additions should stay simple and readable. Use Spring Data `@Query` with nullable filters and `Pageable` where existing derived methods are not enough.
+仓储层只补必要查询方法。优先使用 Spring Data `@Query` 搭配可空过滤条件和 `Pageable`，不引入复杂动态查询框架。
 
-### Store Query Service
+### StoreQueryService
 
-`StoreQueryService` already bounds AI tool queries with `DEFAULT_LIMIT` and `MAX_LIMIT`. Keep that pattern, but make the result contract more explicit.
+`StoreQueryService` 已经通过 `DEFAULT_LIMIT` 和 `MAX_LIMIT` 对 AI 工具查询做了限制，应继续保留这个模式，并把结果契约表达得更明确。
 
-The `QueryResult<T>` record should clearly represent:
+`QueryResult<T>` 应清晰表示：
 
-- `source`: stable machine-readable source key such as `store_inventory_stock`.
-- `sourceLabel`: Chinese display label such as `实时库存`.
-- `records`: structured records returned by the query.
-- `content`: concise text prepared for model/tool display.
-- `recordCount`: number of records returned.
-- `limit`: effective limit used for the query.
-- `truncated`: whether the query may have more matching records than returned.
+- `source`：稳定的机器可读来源标识，例如 `store_inventory_stock`。
+- `sourceLabel`：中文来源名，例如 `实时库存`。
+- `records`：查询得到的结构化记录。
+- `content`：供模型或工具展示使用的简洁中文摘要。
+- `recordCount`：本次返回记录数。
+- `limit`：本次实际使用的查询上限。
+- `truncated`：是否可能还有更多匹配记录未返回。
 
-If adding `truncated` requires an extra count query that would make this pass too large, implement it conservatively as `records.size() >= limit` and document it as a "may be truncated" signal. That is enough for AI responses to avoid implying exhaustive results.
+如果为了精确计算 `truncated` 需要额外 count 查询，导致首轮改动过大，可以先保守实现为 `records.size() >= limit`，并在注释中说明这是“可能被截断”的信号。这样至少能避免 AI 回复把有限结果误说成全量结果。
 
-### Privacy Boundary
+### 隐私边界
 
-Keep `querySalesBills` strict:
+`querySalesBills` 必须继续保持严格：
 
-- Accept `customerPhone` or `billNo`.
-- Reject a query that only provides `customerName`.
-- Keep the existing error code `STORE_QUERY_CUSTOMER_PHONE_REQUIRED`.
+- 允许 `customerPhone` 或 `billNo` 查询。
+- 拒绝只提供 `customerName` 的查询。
+- 保留现有错误码 `STORE_QUERY_CUSTOMER_PHONE_REQUIRED`。
 
-Tests should prove this behavior remains unchanged.
+测试需要证明这条边界没有被整理工作放松。
 
-### Comments
+### 注释要求
 
-Comments should be added only around business rules that are easy to break during future maintenance:
+只在容易被后续维护破坏的业务规则旁添加简洁注释：
 
-- page-size clamping and why it exists,
-- sales-bill privacy gate,
-- "may be truncated" semantics,
-- inventory list filtering that prevents all-row reads.
+- 页大小上限及其原因。
+- 销售账单隐私门槛。
+- “可能被截断”的语义。
+- 库存列表过滤如何避免整表读取。
 
-Do not add comments that restate method names.
+不要添加只复述方法名的注释。
 
-## Frontend Design
+## 前端设计
 
-The frontend should remain visually unchanged in this pass.
+本轮不改变前端视觉结构。
 
-If backend list endpoints change from arrays to paged responses, update `frontend/src/service/api/store.ts` types and the Store page data loading code minimally. The page can continue using the current table layout, but it should pass pagination parameters instead of relying on all records being returned.
+如果后端列表接口从数组改为分页响应，需要最小更新 `frontend/src/service/api/store.ts` 类型，以及经营台页面的数据加载逻辑。页面可以继续使用当前表格布局，但请求时应传递分页参数，而不是依赖后端返回全部记录。
 
-If changing the endpoint response shape would make the first implementation too large, keep existing controller responses compatible and apply bounded defaults server-side first. A separate UI cleanup can expose explicit pagination controls.
+如果首轮实现中直接改变接口响应结构会让范围变大，则先保持 Controller 响应兼容，只在服务端应用有界默认值。显式分页控件可以放到单独的 UI 治理任务中处理。
 
-## Testing Design
+## 测试设计
 
-Backend tests should focus on behavior, not internal implementation:
+后端测试应验证行为，而不是绑定内部实现细节：
 
-- `StoreInventoryServiceTest` should cover bounded stock, inbound, outbound, and ledger listing.
-- `StoreQueryServiceTest` should cover effective limit, privacy rejection, result metadata, and inventory warning queries.
-- `AgentToolRegistryTest` should cover that Store tool responses still include source labels and structured records.
+- `StoreInventoryServiceTest` 覆盖库存、入库单、出库单和流水列表的有界查询。
+- `StoreQueryServiceTest` 覆盖实际查询上限、隐私拒绝、结果元数据和库存预警查询。
+- `AgentToolRegistryTest` 覆盖 Store 工具响应仍包含来源名和结构化记录。
 
-Recommended commands after implementation:
+实现后的推荐命令：
 
 ```bash
 mvn -q -Dtest=StoreInventoryServiceTest,StoreQueryServiceTest,AgentToolRegistryTest test
 mvn -q -DskipTests compile
 ```
 
-Frontend validation if `store.ts` or `store/index.vue` changes:
+如果修改了 `store.ts` 或 `store/index.vue`，需要验证前端类型：
 
 ```bash
 cd frontend && pnpm typecheck
 ```
 
-Runtime validation should happen only after code changes are loaded into the active local runtime:
+运行态验证应在最新代码已经加载到本地运行环境后进行：
 
-- backend on `http://localhost:8081`,
-- frontend on `http://localhost:9527`,
-- browser check for the Store page or chat tool query when relevant.
+- 后端：`http://localhost:8081`
+- 前端：`http://localhost:9527`
+- 按实际改动范围检查经营台页面或聊天中的 Store 工具查询。
 
-## Acceptance Criteria
+## 验收标准
 
-- No Store service read method used by controllers loads an unbounded full table by default.
-- AI Store query tools still return correct structured records and readable source-aware summaries.
-- Sales bill queries cannot expose customer history through name-only fuzzy search.
-- Store targeted backend tests pass.
-- Backend compile passes.
-- Frontend typecheck passes if frontend files were touched.
-- Existing local configuration and unrelated worktree changes are not bundled into this cleanup.
+- Controller 使用的 Store 服务读方法不再默认整表读取。
+- AI Store 查询工具仍能返回正确结构化记录和带来源的中文摘要。
+- 销售账单查询不能通过客户姓名模糊查询泄露客户历史。
+- Store 定向后端测试通过。
+- 后端编译通过。
+- 如果改动前端文件，前端 typecheck 通过。
+- 不把本地配置、IDE 文件、工具目录等无关工作树变化混入本次治理。
 
-## Implementation Order
+## 实施顺序
 
-1. Add or update Store query tests to lock the desired read-path behavior.
-2. Add bounded repository query methods for inventory, order, and ledger lists.
-3. Update `StoreInventoryService` read methods to use bounded filters.
-4. Tighten `StoreQueryService.QueryResult` metadata if needed.
-5. Update `AgentToolRegistry` mapping only if the result shape changes.
-6. Make minimal frontend type/loading updates only if endpoint compatibility requires it.
-7. Run targeted backend tests, backend compile, and frontend typecheck when applicable.
+1. 新增或更新 Store 查询测试，先锁定目标读路径行为。
+2. 为库存、单据和流水列表补充有界仓储查询方法。
+3. 更新 `StoreInventoryService` 读方法，使用有界过滤查询。
+4. 必要时收紧 `StoreQueryService.QueryResult` 元数据。
+5. 只有结果结构变化时，才同步更新 `AgentToolRegistry` 映射。
+6. 只有接口兼容性要求时，才做最小前端类型和加载逻辑更新。
+7. 运行 Store 定向后端测试、后端编译，并在涉及前端时运行 typecheck。

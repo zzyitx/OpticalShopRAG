@@ -177,6 +177,12 @@ cd frontend && pnpm typecheck
 - If a change touches frontend and backend behavior, verify both sides.
 - If a fix depends on runtime state, re-run the natural validation path after the change.
 
+## 文档语言硬约束
+
+- 项目文档、PRD、设计规格、实施计划、评审报告、复盘报告、验收记录等仓库内 Markdown 产物默认必须使用中文撰写。
+- 代码符号、文件路径、命令、API 名称、类名、方法名、表名，以及 `RAG`、`REST API`、`WebSocket`、`Pinia`、`CI/CD` 等常用技术术语，在中文上下文中保留英文更清楚时可以保留英文。
+- 除非用户明确要求英文版本，否则不要用英文编写仓库内 Markdown 交付物。
+
 ## Database, Entity, and Code Comment Standards
 
 When adding or changing database structures:
