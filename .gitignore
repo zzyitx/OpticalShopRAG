@@ -76,3 +76,4 @@ frontend/AutoClaw.pem
 src/main/resources/cert
 /.runtime
 .codegraph/
+/.worktrees/
