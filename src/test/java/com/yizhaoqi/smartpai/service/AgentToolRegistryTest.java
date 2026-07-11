@@ -2,9 +2,11 @@ package com.yizhaoqi.smartpai.service;
 
 import co.elastic.clients.elasticsearch.ElasticsearchClient;
 import com.yizhaoqi.smartpai.client.DeepSeekClient;
+import com.yizhaoqi.smartpai.model.StoreInventoryStock;
 import com.yizhaoqi.smartpai.repository.FileUploadRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mockito;
 import org.springframework.data.redis.core.StringRedisTemplate;
 
@@ -50,8 +52,28 @@ class AgentToolRegistryTest {
 
     @Test
     void shouldExecuteInventoryToolThroughStoreQueryService() {
+        StoreQueryService.InventoryView inventory = new StoreQueryService.InventoryView(
+                "FRAME-A123",
+                "A123 frame",
+                StoreInventoryService.DEFAULT_WAREHOUSE_CODE,
+                3,
+                3,
+                5,
+                StoreInventoryStock.StockStatus.LOW_STOCK,
+                null,
+                null
+        );
         StoreQueryService.QueryResult<StoreQueryService.InventoryView> queryResult =
-                new StoreQueryService.QueryResult<>("store_inventory_stock", "实时库存", List.of(), "来源：实时库存\n未查询到记录。");
+                new StoreQueryService.QueryResult<>(
+                        "store_inventory_stock",
+                        "实时库存",
+                        List.of(inventory),
+                        List.of(inventory),
+                        "来源：实时库存\n1. FRAME-A123 A123 frame",
+                        1,
+                        1,
+                        true
+                );
         when(storeQueryService.queryInventory(any(StoreQueryService.InventoryQuery.class))).thenReturn(queryResult);
 
         AgentToolRegistry.ToolExecutionResult result = registry.executeTool(
@@ -61,9 +83,18 @@ class AgentToolRegistryTest {
         );
 
         assertEquals("query_inventory", result.toolName());
-        assertEquals("来源：实时库存\n未查询到记录。", result.content());
+        assertEquals("来源：实时库存\n1. FRAME-A123 A123 frame", result.content());
         assertEquals("store_inventory_stock", result.data().get("source"));
         assertEquals("实时库存", result.data().get("sourceLabel"));
-        verify(storeQueryService).queryInventory(any(StoreQueryService.InventoryQuery.class));
+        assertEquals(List.of(inventory), result.data().get("records"));
+        assertEquals(1, result.data().get("recordCount"));
+        assertEquals(1, result.data().get("limit"));
+        assertEquals(true, result.data().get("truncated"));
+        ArgumentCaptor<StoreQueryService.InventoryQuery> queryCaptor =
+                ArgumentCaptor.forClass(StoreQueryService.InventoryQuery.class);
+        verify(storeQueryService).queryInventory(queryCaptor.capture());
+        assertEquals("FRAME-A123", queryCaptor.getValue().sku());
+        assertTrue(queryCaptor.getValue().warningOnly());
+        assertEquals(100, queryCaptor.getValue().limit());
     }
 }

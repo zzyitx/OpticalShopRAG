@@ -12,6 +12,7 @@ import com.yizhaoqi.smartpai.repository.StoreSalesBillRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 
@@ -21,6 +22,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -48,7 +50,14 @@ class StoreQueryServiceTest {
     @Test
     void shouldClampProductLimitAndReturnBusinessSource() {
         StoreProduct product = product("FRAME-A123", "A123 frame");
-        when(productRepository.searchProducts(eq("FRAME-A123"), eq("A123"), eq(null), eq(null), eq(null), any(Pageable.class)))
+        when(productRepository.searchProducts(
+                eq("FRAME-A123"),
+                eq("A123"),
+                eq(null),
+                eq(null),
+                eq(null),
+                eq(PageRequest.of(0, StoreQueryService.MAX_LIMIT))
+        ))
                 .thenReturn(List.of(product));
 
         StoreQueryService.QueryResult<StoreQueryService.ProductView> result = service.queryProducts(
@@ -58,8 +67,57 @@ class StoreQueryServiceTest {
         assertEquals("store_product", result.source());
         assertEquals("商品档案", result.sourceLabel());
         assertEquals(1, result.data().size());
+        assertEquals(result.data(), result.records());
+        assertEquals(1, result.recordCount());
+        assertEquals(StoreQueryService.MAX_LIMIT, result.limit());
+        assertFalse(result.truncated());
         assertTrue(result.content().contains("FRAME-A123"));
         assertTrue(result.content().contains("来源：商品档案"));
+    }
+
+    @Test
+    void shouldUsePlannedDefaultLimitWhenRequestedLimitIsInvalid() {
+        when(productRepository.searchProducts(
+                eq(null),
+                eq(null),
+                eq(null),
+                eq(null),
+                eq(null),
+                eq(PageRequest.of(0, 20))
+        )).thenReturn(List.of());
+
+        StoreQueryService.QueryResult<StoreQueryService.ProductView> result = service.queryProducts(
+                new StoreQueryService.ProductQuery(null, null, null, null, null, 0)
+        );
+
+        assertEquals(20, result.limit());
+        assertEquals(0, result.recordCount());
+        assertFalse(result.truncated());
+    }
+
+    @Test
+    void shouldMarkProductResultAsPossiblyTruncatedWhenLimitIsReached() {
+        List<StoreProduct> products = List.of(
+                product("FRAME-A123", "A123 frame"),
+                product("FRAME-B456", "B456 frame")
+        );
+        when(productRepository.searchProducts(
+                eq(null),
+                eq(null),
+                eq(null),
+                eq(null),
+                eq(null),
+                eq(PageRequest.of(0, 2))
+        )).thenReturn(products);
+
+        StoreQueryService.QueryResult<StoreQueryService.ProductView> result = service.queryProducts(
+                new StoreQueryService.ProductQuery(null, null, null, null, null, 2)
+        );
+
+        assertEquals(2, result.recordCount());
+        assertEquals(2, result.limit());
+        assertEquals(result.data(), result.records());
+        assertTrue(result.truncated());
     }
 
     @Test
@@ -88,7 +146,7 @@ class StoreQueryServiceTest {
                 eq(null),
                 eq(StoreInventoryLedger.ChangeType.INBOUND),
                 eq(LocalDateTime.of(2026, 6, 1, 0, 0)),
-                eq(LocalDateTime.of(2026, 6, 30, 23, 59, 59)),
+                any(LocalDateTime.class),
                 any(Pageable.class)
         )).thenReturn(List.of(ledger));
 
@@ -107,6 +165,14 @@ class StoreQueryServiceTest {
         assertEquals(1, result.data().size());
         assertTrue(result.content().contains("IN-001"));
         assertTrue(result.content().contains("来源：库存流水"));
+        Mockito.verify(ledgerRepository).searchLedgers(
+                "FRAME-A123",
+                null,
+                StoreInventoryLedger.ChangeType.INBOUND,
+                LocalDateTime.of(2026, 6, 1, 0, 0),
+                LocalDateTime.of(2026, 7, 1, 0, 0),
+                PageRequest.of(0, 10)
+        );
     }
 
     @Test
@@ -180,6 +246,9 @@ class StoreQueryServiceTest {
         assertEquals("store_business_stats", result.source());
         assertEquals(3L, result.data().get(0).salesBillCount());
         assertEquals(new BigDecimal("1299.00"), result.data().get(0).actualAmount());
+        assertEquals(1, result.recordCount());
+        assertEquals(1, result.limit());
+        assertFalse(result.truncated());
         assertTrue(result.content().contains("来源：门店经营统计"));
     }
 

@@ -19,7 +19,7 @@ public interface StoreInventoryLedgerRepository extends JpaRepository<StoreInven
               and (:businessOrderNo is null or lower(ledger.businessOrderNo) = lower(:businessOrderNo))
               and (:changeType is null or ledger.changeType = :changeType)
               and (:startAt is null or ledger.operatedAt >= :startAt)
-              and (:endAt is null or ledger.operatedAt <= :endAt)
+              and (:endAt is null or ledger.operatedAt < :endAt)
             order by ledger.operatedAt desc, ledger.id desc
             """)
     List<StoreInventoryLedger> searchLedgers(@Param("productSku") String productSku,

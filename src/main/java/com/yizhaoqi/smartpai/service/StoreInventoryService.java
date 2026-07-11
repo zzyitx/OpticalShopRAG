@@ -13,6 +13,8 @@ import com.yizhaoqi.smartpai.repository.StoreInventoryLedgerRepository;
 import com.yizhaoqi.smartpai.repository.StoreInventoryStockRepository;
 import com.yizhaoqi.smartpai.repository.StoreOutboundOrderRepository;
 import com.yizhaoqi.smartpai.repository.StoreProductRepository;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,6 +33,8 @@ import java.util.List;
 public class StoreInventoryService {
 
     public static final String DEFAULT_WAREHOUSE_CODE = "DEFAULT";
+    public static final int DEFAULT_LIST_SIZE = 20;
+    public static final int MAX_LIST_SIZE = 100;
     private static final DateTimeFormatter ORDER_DATE_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMdd");
 
     private final StoreInventoryStockRepository stockRepository;
@@ -53,27 +57,84 @@ public class StoreInventoryService {
 
     @Transactional(readOnly = true)
     public List<StockView> listStocks() {
-        return stockRepository.findAll().stream()
+        return listStocks(new StockListQuery(null, null, 0, DEFAULT_LIST_SIZE));
+    }
+
+    @Transactional(readOnly = true)
+    public List<StockView> listStocks(StockListQuery query) {
+        StockListQuery resolved = query == null ? new StockListQuery(null, null, 0, DEFAULT_LIST_SIZE) : query;
+        return stockRepository.searchStocks(
+                        trimToNull(resolved.productSku()),
+                        resolved.status(),
+                        false,
+                        pageRequest(resolved.page(), resolved.size())
+                ).stream()
                 .map(this::toStockView)
                 .toList();
     }
 
     @Transactional(readOnly = true)
     public List<InboundOrderView> listInbounds() {
-        return inboundOrderRepository.findAll().stream().map(this::toInboundOrderView).toList();
+        return listInbounds(new InboundOrderListQuery(null, null, null, null, 0, DEFAULT_LIST_SIZE));
+    }
+
+    @Transactional(readOnly = true)
+    public List<InboundOrderView> listInbounds(InboundOrderListQuery query) {
+        InboundOrderListQuery resolved = query == null
+                ? new InboundOrderListQuery(null, null, null, null, 0, DEFAULT_LIST_SIZE)
+                : query;
+        return inboundOrderRepository.searchOrders(
+                        trimToNull(resolved.orderNo()),
+                        resolved.status(),
+                        startAt(resolved.startDate()),
+                        endAt(resolved.endDate()),
+                        pageRequest(resolved.page(), resolved.size())
+                ).stream()
+                .map(this::toInboundOrderView)
+                .toList();
     }
 
     @Transactional(readOnly = true)
     public List<OutboundOrderView> listOutbounds() {
-        return outboundOrderRepository.findAll().stream().map(this::toOutboundOrderView).toList();
+        return listOutbounds(new OutboundOrderListQuery(null, null, null, null, 0, DEFAULT_LIST_SIZE));
+    }
+
+    @Transactional(readOnly = true)
+    public List<OutboundOrderView> listOutbounds(OutboundOrderListQuery query) {
+        OutboundOrderListQuery resolved = query == null
+                ? new OutboundOrderListQuery(null, null, null, null, 0, DEFAULT_LIST_SIZE)
+                : query;
+        return outboundOrderRepository.searchOrders(
+                        trimToNull(resolved.orderNo()),
+                        resolved.status(),
+                        startAt(resolved.startDate()),
+                        endAt(resolved.endDate()),
+                        pageRequest(resolved.page(), resolved.size())
+                ).stream()
+                .map(this::toOutboundOrderView)
+                .toList();
     }
 
     @Transactional(readOnly = true)
     public List<LedgerView> listLedgers(String productSku) {
-        List<StoreInventoryLedger> ledgers = StringUtils.hasText(productSku)
-                ? ledgerRepository.findByProductSkuOrderByOperatedAtDesc(productSku.trim())
-                : ledgerRepository.findAll();
-        return ledgers.stream().map(this::toLedgerView).toList();
+        return listLedgers(new LedgerListQuery(productSku, null, null, null, null, 0, DEFAULT_LIST_SIZE));
+    }
+
+    @Transactional(readOnly = true)
+    public List<LedgerView> listLedgers(LedgerListQuery query) {
+        LedgerListQuery resolved = query == null
+                ? new LedgerListQuery(null, null, null, null, null, 0, DEFAULT_LIST_SIZE)
+                : query;
+        return ledgerRepository.searchLedgers(
+                        trimToNull(resolved.productSku()),
+                        trimToNull(resolved.businessOrderNo()),
+                        resolved.changeType(),
+                        startAt(resolved.startDate()),
+                        endAt(resolved.endDate()),
+                        pageRequest(resolved.page(), resolved.size())
+                ).stream()
+                .map(this::toLedgerView)
+                .toList();
     }
 
     @Transactional
@@ -328,6 +389,26 @@ public class StoreInventoryService {
         return prefix + "-" + LocalDate.now().format(ORDER_DATE_FORMATTER) + "-" + System.nanoTime();
     }
 
+    private Pageable pageRequest(Integer page, Integer size) {
+        int resolvedPage = page == null || page < 0 ? 0 : page;
+        int resolvedSize = size == null || size <= 0 ? DEFAULT_LIST_SIZE : Math.min(size, MAX_LIST_SIZE);
+        // Store 列表默认有界读取，避免经营台或 AI 工具无意间拉取整表历史数据。
+        return PageRequest.of(resolvedPage, resolvedSize);
+    }
+
+    private LocalDateTime startAt(LocalDate date) {
+        return date == null ? null : date.atStartOfDay();
+    }
+
+    private LocalDateTime endAt(LocalDate date) {
+        // 结束日期使用次日零点的排他上界，避免遗漏当日带小数秒的记录。
+        return date == null ? null : date.plusDays(1).atStartOfDay();
+    }
+
+    private String trimToNull(String value) {
+        return StringUtils.hasText(value) ? value.trim() : null;
+    }
+
     private StockView toStockView(StoreInventoryStock stock) {
         return new StockView(
                 stock.getId(),
@@ -373,6 +454,14 @@ public class StoreInventoryService {
     ) {
     }
 
+    public record StockListQuery(
+            String productSku,
+            StoreInventoryStock.StockStatus status,
+            Integer page,
+            Integer size
+    ) {
+    }
+
     public record InboundOrderCreateRequest(
             StoreInboundOrder.InboundType inboundType,
             String supplier,
@@ -411,6 +500,26 @@ public class StoreInventoryService {
     public record OutboundOrderView(Long id, String orderNo, StoreOutboundOrder.OutboundStatus status) {
     }
 
+    public record InboundOrderListQuery(
+            String orderNo,
+            StoreInboundOrder.InboundStatus status,
+            LocalDate startDate,
+            LocalDate endDate,
+            Integer page,
+            Integer size
+    ) {
+    }
+
+    public record OutboundOrderListQuery(
+            String orderNo,
+            StoreOutboundOrder.OutboundStatus status,
+            LocalDate startDate,
+            LocalDate endDate,
+            Integer page,
+            Integer size
+    ) {
+    }
+
     public record LedgerView(
             Long id,
             String productSku,
@@ -421,6 +530,17 @@ public class StoreInventoryService {
             StoreInventoryLedger.OperationSource operationSource,
             String operator,
             LocalDateTime operatedAt
+    ) {
+    }
+
+    public record LedgerListQuery(
+            String productSku,
+            String businessOrderNo,
+            StoreInventoryLedger.ChangeType changeType,
+            LocalDate startDate,
+            LocalDate endDate,
+            Integer page,
+            Integer size
     ) {
     }
 }

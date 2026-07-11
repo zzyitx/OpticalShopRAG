@@ -18,7 +18,6 @@ import org.springframework.util.StringUtils;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.LocalTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -31,8 +30,8 @@ import java.util.stream.Collectors;
 @Service
 public class StoreQueryService {
 
-    private static final int DEFAULT_LIMIT = 10;
-    private static final int MAX_LIMIT = 50;
+    static final int DEFAULT_LIMIT = 20;
+    public static final int MAX_LIMIT = 50;
     private static final int DEFAULT_DATE_DAYS = 30;
     private static final int MAX_DATE_DAYS = 366;
 
@@ -65,7 +64,7 @@ public class StoreQueryService {
                 .stream()
                 .map(this::toProductView)
                 .toList();
-        return result("store_product", "商品档案", products, this::formatProduct);
+        return result("store_product", "商品档案", products, limit, this::formatProduct);
     }
 
     @Transactional(readOnly = true)
@@ -85,7 +84,7 @@ public class StoreQueryService {
         List<InventoryView> inventory = stocks.stream()
                 .map(stock -> toInventoryView(stock, productsBySku.get(stock.getProductSku())))
                 .toList();
-        return result("store_inventory_stock", "实时库存", inventory, this::formatInventory);
+        return result("store_inventory_stock", "实时库存", inventory, limit, this::formatInventory);
     }
 
     @Transactional(readOnly = true)
@@ -97,13 +96,13 @@ public class StoreQueryService {
                         trimToNull(query == null ? null : query.businessOrderNo()),
                         query == null ? null : query.changeType(),
                         range.startDate().atStartOfDay(),
-                        range.endDate().atTime(LocalTime.of(23, 59, 59)),
+                        range.endDate().plusDays(1).atStartOfDay(),
                         PageRequest.of(0, limit)
                 )
                 .stream()
                 .map(this::toStockFlowView)
                 .toList();
-        return result("store_inventory_ledger", "库存流水", flows, this::formatStockFlow);
+        return result("store_inventory_ledger", "库存流水", flows, limit, this::formatStockFlow);
     }
 
     @Transactional(readOnly = true)
@@ -128,7 +127,7 @@ public class StoreQueryService {
                 .stream()
                 .map(this::toSalesBillView)
                 .toList();
-        return result("store_sales_bill", "销售账单", bills, this::formatSalesBill);
+        return result("store_sales_bill", "销售账单", bills, limit, this::formatSalesBill);
     }
 
     @Transactional(readOnly = true)
@@ -143,19 +142,44 @@ public class StoreQueryService {
                 stockRepository.countByStatus(StoreInventoryStock.StockStatus.OUT_OF_STOCK),
                 trimToNull(query == null ? null : query.dimension()) == null ? "summary" : query.dimension().trim()
         );
-        return result("store_business_stats", "门店经营统计", List.of(stats), this::formatStoreStats);
+        return result("store_business_stats", "门店经营统计", List.of(stats), 1, false, this::formatStoreStats);
     }
 
-    private <T> QueryResult<T> result(String source, String sourceLabel, List<T> data, Function<T, String> formatter) {
+    private <T> QueryResult<T> result(String source,
+                                      String sourceLabel,
+                                      List<T> records,
+                                      int limit,
+                                      Function<T, String> formatter) {
+        List<T> safeRecords = records == null ? List.of() : records;
+        return result(source, sourceLabel, safeRecords, limit, !safeRecords.isEmpty() && safeRecords.size() >= limit, formatter);
+    }
+
+    private <T> QueryResult<T> result(String source,
+                                      String sourceLabel,
+                                      List<T> records,
+                                      int limit,
+                                      boolean truncated,
+                                      Function<T, String> formatter) {
+        List<T> safeRecords = records == null ? List.of() : records;
         StringBuilder content = new StringBuilder("来源：").append(sourceLabel);
-        if (data == null || data.isEmpty()) {
+        if (safeRecords.isEmpty()) {
             content.append("\n未查询到记录。");
-            return new QueryResult<>(source, sourceLabel, List.of(), content.toString());
+        } else {
+            for (int i = 0; i < safeRecords.size(); i++) {
+                content.append("\n").append(i + 1).append(". ").append(formatter.apply(safeRecords.get(i)));
+            }
         }
-        for (int i = 0; i < data.size(); i++) {
-            content.append("\n").append(i + 1).append(". ").append(formatter.apply(data.get(i)));
-        }
-        return new QueryResult<>(source, sourceLabel, data, content.toString());
+        // 当前不额外执行 count 查询，truncated 表示结果可能被查询上限截断。
+        return new QueryResult<>(
+                source,
+                sourceLabel,
+                safeRecords,
+                safeRecords,
+                content.toString(),
+                safeRecords.size(),
+                limit,
+                truncated
+        );
     }
 
     private ProductView toProductView(StoreProduct product) {
@@ -366,7 +390,11 @@ public class StoreQueryService {
             String source,
             String sourceLabel,
             List<T> data,
-            String content
+            List<T> records,
+            String content,
+            int recordCount,
+            int limit,
+            boolean truncated
     ) {
     }
 

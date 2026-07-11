@@ -554,7 +554,10 @@ public class AgentToolRegistry {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("source", result.source());
         data.put("sourceLabel", result.sourceLabel());
-        data.put("records", result.data());
+        data.put("records", result.records());
+        data.put("recordCount", result.recordCount());
+        data.put("limit", result.limit());
+        data.put("truncated", result.truncated());
         return new ToolExecutionResult(toolName, true, result.content(), data);
     }
 

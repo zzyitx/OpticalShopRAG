@@ -1,5 +1,9 @@
 package com.yizhaoqi.smartpai.controller;
 
+import com.yizhaoqi.smartpai.model.StoreInboundOrder;
+import com.yizhaoqi.smartpai.model.StoreInventoryLedger;
+import com.yizhaoqi.smartpai.model.StoreInventoryStock;
+import com.yizhaoqi.smartpai.model.StoreOutboundOrder;
 import com.yizhaoqi.smartpai.service.StoreInventoryService;
 import com.yizhaoqi.smartpai.service.StoreOperatorResolver;
 import org.springframework.http.ResponseEntity;
@@ -13,6 +17,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.time.LocalDate;
 import java.util.Map;
 
 /**
@@ -33,26 +38,61 @@ public class StoreInventoryController {
 
     @GetMapping("/stocks")
     @PreAuthorize("@permissionAuthorization.has(authentication, 'store.inventory.view')")
-    public ResponseEntity<?> listStocks() {
-        return ResponseEntity.ok(success(storeInventoryService.listStocks()));
+    public ResponseEntity<?> listStocks(@RequestParam(required = false) String productSku,
+                                        @RequestParam(required = false) StoreInventoryStock.StockStatus status,
+                                        @RequestParam(required = false) Integer page,
+                                        @RequestParam(required = false) Integer size) {
+        return ResponseEntity.ok(success(storeInventoryService.listStocks(
+                new StoreInventoryService.StockListQuery(productSku, status, page, size)
+        )));
     }
 
     @GetMapping("/inbounds")
     @PreAuthorize("@permissionAuthorization.has(authentication, 'store.inventory.view')")
-    public ResponseEntity<?> listInbounds() {
-        return ResponseEntity.ok(success(storeInventoryService.listInbounds()));
+    public ResponseEntity<?> listInbounds(@RequestParam(required = false) String orderNo,
+                                          @RequestParam(required = false) StoreInboundOrder.InboundStatus status,
+                                          @RequestParam(required = false) LocalDate startDate,
+                                          @RequestParam(required = false) LocalDate endDate,
+                                          @RequestParam(required = false) Integer page,
+                                          @RequestParam(required = false) Integer size) {
+        return ResponseEntity.ok(success(storeInventoryService.listInbounds(
+                new StoreInventoryService.InboundOrderListQuery(orderNo, status, startDate, endDate, page, size)
+        )));
     }
 
     @GetMapping("/outbounds")
     @PreAuthorize("@permissionAuthorization.has(authentication, 'store.inventory.view')")
-    public ResponseEntity<?> listOutbounds() {
-        return ResponseEntity.ok(success(storeInventoryService.listOutbounds()));
+    public ResponseEntity<?> listOutbounds(@RequestParam(required = false) String orderNo,
+                                           @RequestParam(required = false) StoreOutboundOrder.OutboundStatus status,
+                                           @RequestParam(required = false) LocalDate startDate,
+                                           @RequestParam(required = false) LocalDate endDate,
+                                           @RequestParam(required = false) Integer page,
+                                           @RequestParam(required = false) Integer size) {
+        return ResponseEntity.ok(success(storeInventoryService.listOutbounds(
+                new StoreInventoryService.OutboundOrderListQuery(orderNo, status, startDate, endDate, page, size)
+        )));
     }
 
     @GetMapping("/ledgers")
     @PreAuthorize("@permissionAuthorization.has(authentication, 'store.inventory.view')")
-    public ResponseEntity<?> listLedgers(@RequestParam(required = false) String productSku) {
-        return ResponseEntity.ok(success(storeInventoryService.listLedgers(productSku)));
+    public ResponseEntity<?> listLedgers(@RequestParam(required = false) String productSku,
+                                         @RequestParam(required = false) String businessOrderNo,
+                                         @RequestParam(required = false) StoreInventoryLedger.ChangeType changeType,
+                                         @RequestParam(required = false) LocalDate startDate,
+                                         @RequestParam(required = false) LocalDate endDate,
+                                         @RequestParam(required = false) Integer page,
+                                         @RequestParam(required = false) Integer size) {
+        return ResponseEntity.ok(success(storeInventoryService.listLedgers(
+                new StoreInventoryService.LedgerListQuery(
+                        productSku,
+                        businessOrderNo,
+                        changeType,
+                        startDate,
+                        endDate,
+                        page,
+                        size
+                )
+        )));
     }
 
     @PostMapping("/inbounds")

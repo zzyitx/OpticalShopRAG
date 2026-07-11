@@ -3,6 +3,7 @@ package com.yizhaoqi.smartpai.service;
 import com.yizhaoqi.smartpai.exception.CustomException;
 import com.yizhaoqi.smartpai.model.StoreInboundItem;
 import com.yizhaoqi.smartpai.model.StoreInboundOrder;
+import com.yizhaoqi.smartpai.model.StoreInventoryLedger;
 import com.yizhaoqi.smartpai.model.StoreInventoryStock;
 import com.yizhaoqi.smartpai.model.StoreOutboundItem;
 import com.yizhaoqi.smartpai.model.StoreOutboundOrder;
@@ -15,9 +16,12 @@ import com.yizhaoqi.smartpai.repository.StoreProductRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -25,6 +29,7 @@ import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -168,6 +173,205 @@ class StoreInventoryServiceTest {
         assertEquals(StoreInboundOrder.InboundStatus.CANCELLED, view.status());
         verify(stockRepository, never()).save(any());
         verify(ledgerRepository, never()).save(any());
+    }
+
+    @Test
+    void shouldListStocksWithBoundedPageRequest() {
+        StoreInventoryStock stock = new StoreInventoryStock();
+        stock.setId(10L);
+        stock.setProductSku("FRAME-A123");
+        stock.setWarehouseCode(StoreInventoryService.DEFAULT_WAREHOUSE_CODE);
+        stock.setCurrentQuantity(3);
+        stock.setAvailableQuantity(3);
+        stock.setSafeStock(5);
+        stock.setStatus(StoreInventoryStock.StockStatus.LOW_STOCK);
+        when(stockRepository.searchStocks(
+                eq("FRAME-A123"),
+                eq(StoreInventoryStock.StockStatus.LOW_STOCK),
+                eq(false),
+                eq(PageRequest.of(0, StoreInventoryService.MAX_LIST_SIZE))
+        ))
+                .thenReturn(List.of(stock));
+
+        List<StoreInventoryService.StockView> result = service.listStocks(
+                new StoreInventoryService.StockListQuery(" FRAME-A123 ", StoreInventoryStock.StockStatus.LOW_STOCK, 0, 200)
+        );
+
+        assertEquals(1, result.size());
+        assertEquals("FRAME-A123", result.get(0).productSku());
+        verify(stockRepository).searchStocks(
+                "FRAME-A123",
+                StoreInventoryStock.StockStatus.LOW_STOCK,
+                false,
+                PageRequest.of(0, StoreInventoryService.MAX_LIST_SIZE)
+        );
+    }
+
+    @Test
+    void shouldListInboundOrdersWithBoundedFilters() {
+        StoreInboundOrder order = new StoreInboundOrder();
+        order.setId(11L);
+        order.setOrderNo("IN-001");
+        order.setStatus(StoreInboundOrder.InboundStatus.DRAFT);
+        when(inboundOrderRepository.searchOrders(
+                eq("IN-001"),
+                eq(StoreInboundOrder.InboundStatus.DRAFT),
+                eq(LocalDate.of(2026, 6, 1).atStartOfDay()),
+                any(LocalDateTime.class),
+                eq(PageRequest.of(0, StoreInventoryService.MAX_LIST_SIZE))
+        )).thenReturn(List.of(order));
+
+        List<StoreInventoryService.InboundOrderView> result = service.listInbounds(
+                new StoreInventoryService.InboundOrderListQuery(
+                        "IN-001",
+                        StoreInboundOrder.InboundStatus.DRAFT,
+                        LocalDate.of(2026, 6, 1),
+                        LocalDate.of(2026, 6, 30),
+                        0,
+                        200
+                )
+        );
+
+        assertEquals(1, result.size());
+        assertEquals("IN-001", result.get(0).orderNo());
+        verify(inboundOrderRepository).searchOrders(
+                "IN-001",
+                StoreInboundOrder.InboundStatus.DRAFT,
+                LocalDate.of(2026, 6, 1).atStartOfDay(),
+                LocalDate.of(2026, 7, 1).atStartOfDay(),
+                PageRequest.of(0, StoreInventoryService.MAX_LIST_SIZE)
+        );
+    }
+
+    @Test
+    void shouldListOutboundOrdersWithBoundedFilters() {
+        StoreOutboundOrder order = new StoreOutboundOrder();
+        order.setId(12L);
+        order.setOrderNo("OUT-001");
+        order.setStatus(StoreOutboundOrder.OutboundStatus.CONFIRMED);
+        when(outboundOrderRepository.searchOrders(
+                eq("OUT-001"),
+                eq(StoreOutboundOrder.OutboundStatus.CONFIRMED),
+                eq(LocalDate.of(2026, 6, 1).atStartOfDay()),
+                any(LocalDateTime.class),
+                eq(PageRequest.of(0, StoreInventoryService.MAX_LIST_SIZE))
+        )).thenReturn(List.of(order));
+
+        List<StoreInventoryService.OutboundOrderView> result = service.listOutbounds(
+                new StoreInventoryService.OutboundOrderListQuery(
+                        "OUT-001",
+                        StoreOutboundOrder.OutboundStatus.CONFIRMED,
+                        LocalDate.of(2026, 6, 1),
+                        LocalDate.of(2026, 6, 30),
+                        0,
+                        200
+                )
+        );
+
+        assertEquals(1, result.size());
+        assertEquals("OUT-001", result.get(0).orderNo());
+        verify(outboundOrderRepository).searchOrders(
+                "OUT-001",
+                StoreOutboundOrder.OutboundStatus.CONFIRMED,
+                LocalDate.of(2026, 6, 1).atStartOfDay(),
+                LocalDate.of(2026, 7, 1).atStartOfDay(),
+                PageRequest.of(0, StoreInventoryService.MAX_LIST_SIZE)
+        );
+    }
+
+    @Test
+    void shouldListLedgersWithBoundedFilters() {
+        StoreInventoryLedger ledger = new StoreInventoryLedger();
+        ledger.setId(13L);
+        ledger.setProductSku("FRAME-A123");
+        ledger.setBusinessOrderNo("IN-001");
+        ledger.setChangeType(StoreInventoryLedger.ChangeType.INBOUND);
+        ledger.setQuantityBefore(0);
+        ledger.setChangeQuantity(5);
+        ledger.setQuantityAfter(5);
+        ledger.setOperationSource(StoreInventoryLedger.OperationSource.INBOUND_ORDER);
+        ledger.setOperatedAt(LocalDateTime.of(2026, 6, 8, 10, 0));
+        when(ledgerRepository.searchLedgers(
+                eq("FRAME-A123"),
+                eq("IN-001"),
+                eq(StoreInventoryLedger.ChangeType.INBOUND),
+                eq(LocalDate.of(2026, 6, 1).atStartOfDay()),
+                any(LocalDateTime.class),
+                eq(PageRequest.of(0, StoreInventoryService.MAX_LIST_SIZE))
+        )).thenReturn(List.of(ledger));
+
+        List<StoreInventoryService.LedgerView> result = service.listLedgers(
+                new StoreInventoryService.LedgerListQuery(
+                        "FRAME-A123",
+                        "IN-001",
+                        StoreInventoryLedger.ChangeType.INBOUND,
+                        LocalDate.of(2026, 6, 1),
+                        LocalDate.of(2026, 6, 30),
+                        0,
+                        200
+                )
+        );
+
+        assertEquals(1, result.size());
+        assertEquals("FRAME-A123", result.get(0).productSku());
+        verify(ledgerRepository).searchLedgers(
+                "FRAME-A123",
+                "IN-001",
+                StoreInventoryLedger.ChangeType.INBOUND,
+                LocalDate.of(2026, 6, 1).atStartOfDay(),
+                LocalDate.of(2026, 7, 1).atStartOfDay(),
+                PageRequest.of(0, StoreInventoryService.MAX_LIST_SIZE)
+        );
+    }
+
+    @Test
+    void shouldUseDefaultBoundedPageRequestForStockList() {
+        when(stockRepository.searchStocks(
+                eq(null),
+                eq(null),
+                eq(false),
+                eq(PageRequest.of(0, StoreInventoryService.DEFAULT_LIST_SIZE))
+        )).thenReturn(List.of());
+
+        service.listStocks();
+
+        verify(stockRepository).searchStocks(
+                null,
+                null,
+                false,
+                PageRequest.of(0, StoreInventoryService.DEFAULT_LIST_SIZE)
+        );
+    }
+
+    @Test
+    void shouldNormalizeInvalidPageAndSizeForLedgerList() {
+        when(ledgerRepository.searchLedgers(
+                eq(null),
+                eq(null),
+                eq(null),
+                eq(null),
+                eq(null),
+                eq(PageRequest.of(0, StoreInventoryService.DEFAULT_LIST_SIZE))
+        )).thenReturn(List.of());
+
+        service.listLedgers(new StoreInventoryService.LedgerListQuery(
+                " ",
+                " ",
+                null,
+                null,
+                null,
+                -1,
+                0
+        ));
+
+        verify(ledgerRepository).searchLedgers(
+                null,
+                null,
+                null,
+                null,
+                null,
+                PageRequest.of(0, StoreInventoryService.DEFAULT_LIST_SIZE)
+        );
     }
 
     private StoreProduct enabledProduct(String sku) {
